@@ -161,6 +161,12 @@ function reportError(text){
 }
 
 function recActive(){return !!(engine&&(engine.state==='recording'||engine.state==='paused'));}
+/* 翻译开关做成胶囊按钮：勾选框在视觉上隐藏，靠 .on 表示状态。 */
+function syncTranslatePill(){
+  if(!ui.translateCheck)return;
+  const pill=ui.translateCheck.closest('.rec-translate');
+  if(pill)pill.classList.toggle('on',!!ui.translateCheck.checked);
+}
 function currentElapsed(){return engine?engine.elapsedSec():0;}
 function hasAudio(){return !!(playback&&playback.url)||!!(persist.audio&&persist.audio.data);}
 function playTime(){return playback&&playback.url?playback.audio.currentTime:0;}
@@ -210,8 +216,10 @@ function ensureUI(){
   ui.anchor.addEventListener('click',markAnchor);
   if(ui.translateCheck){
     ui.translateCheck.checked=!!persist.translate;
+    syncTranslatePill();
     ui.translateCheck.addEventListener('change',()=>{
       persist.translate=!!ui.translateCheck.checked;
+      syncTranslatePill();
       env.scheduleSave();
       notify(persist.translate?'已开启实时翻译':'已关闭实时翻译');
     });
@@ -868,6 +876,7 @@ export function lectureAfterRestore(){
   if(uiReady){
     if(persist.audio)ensurePlayback().load(persist.audio.data,persist.audio.mime);
     if(ui.translateCheck)ui.translateCheck.checked=!!persist.translate;
+    syncTranslatePill();
     if(ui.demoireEnabled&&ui.demoireStrength){
       ui.demoireEnabled.checked=persist.demoire.enabled;
       ui.demoireStrength.value=Math.round(persist.demoire.strength*100);

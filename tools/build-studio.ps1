@@ -29,7 +29,7 @@ $unsigned=Join-Path $work 'unsigned.apk'
 $page=Join-Path $root 'studio/src/main/assets/studio/index.html'
 Copy-Item -LiteralPath $page -Destination (Join-Path $root 'studio/src/main/assets/studio/editor.page') -Force
 Copy-Item -LiteralPath $page -Destination (Join-Path $root 'studio/src/main/assets/editor.page') -Force
-Checked (Join-Path $bt 'aapt2.exe') @('link','-o',$unsigned,'--manifest',$manifest,'-I',$platform,'-A',(Join-Path $root 'app/src/main/assets'),'-A',(Join-Path $root 'studio/src/main/assets'),'-0','wav','-0','wasm','-0','zip','-0','js','-0','mjs','-0','html','-0','css','-0','page','--min-sdk-version','23','--target-sdk-version','34','--version-code','26','--version-name','0.1.18',$resources)
+Checked (Join-Path $bt 'aapt2.exe') @('link','-o',$unsigned,'--manifest',$manifest,'-I',$platform,'-A',(Join-Path $root 'app/src/main/assets'),'-A',(Join-Path $root 'studio/src/main/assets'),'-0','wav','-0','wasm','-0','zip','-0','js','-0','mjs','-0','html','-0','css','-0','page','--min-sdk-version','23','--target-sdk-version','34','--version-code','27','--version-name','0.1.19',$resources)
 Checked (Join-Path $JdkRoot 'bin/jar.exe') @('uf',$unsigned,'-C',$dex,'classes.dex')
 # aapt2 on Windows writes nested assets as assets/studio\style.css; Android reads
 # entry names literally, so normalize the stored names before alignment/signing.
@@ -39,13 +39,13 @@ $aligned=Join-Path $work 'aligned.apk'
 Checked (Join-Path $bt 'zipalign.exe') @('-f','4',$unsigned,$aligned)
 $key=if($SigningKey){[IO.Path]::GetFullPath($SigningKey)}else{Join-Path $root 'build/manual/debug.keystore'}
 if(-not (Test-Path -LiteralPath $key)){throw 'Original development key is missing. Reuse your original signing key for an in-place upgrade.'}
-$name=if($ParallelInstall){'Ember-Studio-0.1.18-parallel.apk'}else{'Ember-Studio-0.1.18.apk'}
+$name=if($ParallelInstall){'Ember-Studio-0.1.19-parallel.apk'}else{'Ember-Studio-0.1.19.apk'}
 $apk=Join-Path $dist $name
 Checked $java @('-jar',(Join-Path $bt 'lib/apksigner.jar'),'sign','--ks',$key,'--ks-pass','pass:android','--key-pass','pass:android','--out',$apk,$aligned)
 Remove-Item -LiteralPath ($apk + '.idsig') -ErrorAction SilentlyContinue
 Checked $java @('-jar',(Join-Path $bt 'lib/apksigner.jar'),'verify','--verbose','--print-certs',$apk)
 Checked (Join-Path $bt 'zipalign.exe') @('-c','4',$apk)
 Checked (Join-Path $bt 'aapt.exe') @('dump','badging',$apk)
-$sums=@((Get-ChildItem -LiteralPath $dist -Filter 'Ember-Studio-0.1.18*.apk'|Sort-Object Name)|ForEach-Object{"$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"})
+$sums=@((Get-ChildItem -LiteralPath $dist -Filter 'Ember-Studio-0.1.19*.apk'|Sort-Object Name)|ForEach-Object{"$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"})
 [IO.File]::WriteAllText((Join-Path $dist 'STUDIO-SHA256SUMS.txt'),(($sums -join "`n")+"`n"),[Text.UTF8Encoding]::new($false))
 Write-Output "Studio APK ready: $apk"

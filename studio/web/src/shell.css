@@ -1,0 +1,125 @@
+/* 统一页面外壳（非游戏模式）
+   顶栏卡片（标题 + 保存 + 黑白齿轮）→ 模式控制条卡片 → 内容卡片 → 底部分段标签 → 状态栏。
+   只做外观与间距，不动任何交互逻辑；游戏用的是另一套 lounge/game 布局，这里整体排除。 */
+
+body{
+  --shell-accent:#0f766e;
+  --shell-bar:#eef7f3;
+  --shell-line:rgba(16,45,36,.10);
+  --shell-wash:#f4faf7;
+  --shell-ink:#10211b;
+  --shell-gap:8px;
+  --shell-radius:16px;
+}
+body.notepad{--shell-accent:#b08d57;--shell-bar:#f7f1e3;--shell-line:rgba(120,95,55,.16);--shell-wash:#f7f3e8;--shell-ink:#3d3a30}
+body.lecture{--shell-accent:#e11d48;--shell-bar:#fdeef1;--shell-line:rgba(225,29,72,.16);--shell-wash:#fff7f8;--shell-ink:#9f1239}
+body.tts{--shell-accent:#0d9488;--shell-bar:#eafaf7;--shell-line:rgba(13,148,136,.16);--shell-wash:#f3fdfa;--shell-ink:#0f5f57}
+body.aiview{--shell-accent:#7258a8;--shell-bar:#f4f0fc;--shell-line:rgba(114,88,168,.16);--shell-wash:#f8f5ff;--shell-ink:#302b40}
+
+body:not(.gameview){background:var(--shell-wash)}
+
+/* ===== 顶栏卡片 ===== */
+body:not(.gameview) .appbar{
+  height:52px;min-height:52px;margin:var(--shell-gap) var(--shell-gap) 6px;
+  padding:0 5px 0 4px;gap:4px;
+  border:1px solid var(--shell-line);border-radius:var(--shell-radius);
+  background:var(--shell-bar);
+  backdrop-filter:none;box-shadow:none;
+}
+body:not(.gameview) .appbar .icon{width:36px;min-width:36px;height:36px;min-height:36px;border-radius:10px;color:#1b2321;font-size:19px;flex:none}
+body:not(.gameview) #activePath{color:#1f2328}
+body:not(.gameview) .doc{padding:0 5px}
+body:not(.gameview) .doc strong{font-size:15px;font-weight:600;color:#1f2328;letter-spacing:0}
+body:not(.gameview) .doc small{display:none}
+/* 窄屏样式把「保存」压成 34px 方块，字会溢出；这里用 id 选择器抢回胶囊形态 */
+body:not(.gameview) #saveButton,
+body:not(.gameview) .appbar .saveicon{
+  flex:none;width:auto;height:30px;min-height:30px;min-width:58px;padding:0 14px;border-radius:999px;
+  border:1px solid var(--shell-line);background:#fff;color:#1f2328;
+  font-size:12.5px;font-weight:600;box-shadow:0 1px 2px rgba(16,45,36,.06);
+}
+body:not(.gameview) #runButton{flex:none;height:32px;min-height:32px;padding:0 13px;border-radius:999px;font-size:13px}
+body:not(.gameview) #stopButton{flex:none;height:32px;min-height:32px;padding:0 12px;border-radius:999px;font-size:13px}
+
+/* 齿轮：纯黑白线条图标，跟随主题文字色，不带任何彩色底 */
+body:not(.gameview) #moreButton{color:#000}
+#moreButton svg{width:21px;height:21px;display:block;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+@media(hover:hover){body:not(.gameview) #moreButton:hover{background:rgba(0,0,0,.05);color:#000}}
+
+/* 文件标签行按新布局收进「☰ 文件」抽屉，页面只保留一行顶栏 */
+body:not(.gameview) .tabbar{display:none!important}
+
+/* ===== 内容卡片 ===== */
+body:not(.gameview) #workbench{
+  margin:0 var(--shell-gap) 6px;border:1px solid var(--shell-line);border-radius:18px;
+  background:#fff;overflow:hidden;box-shadow:0 6px 18px rgba(16,45,36,.05);
+}
+body.notepad #workbench,body.notepad .workspace,body.notepad #editor,body.notepad .cm-editor{background:#fffdf8!important}
+body.lecture #workbench,body.tts #workbench{background:#fff}
+/* 行号栏跟着卡片走白底，别让上课模式的时间戳底色把别的模式染成粉色 */
+body:not(.gameview) .cm-gutters{background:#fff!important}
+body:not(.gameview) .cm-note-times{background:#fff}
+body.lecture .cm-gutters{background:#fffafa!important}
+body.lecture .cm-note-times{background:#fffafa}
+
+/* ===== 上课：录音控制条卡片 ===== */
+body.lecture #lectureBar{
+  height:52px;min-height:52px;margin:0 var(--shell-gap) 6px;padding:0 10px;
+  border:1px solid var(--shell-line);border-radius:var(--shell-radius);
+  background:#fff;box-shadow:0 1px 2px rgba(225,29,72,.06);
+}
+body.lecture #lectureBar[data-state="error"]{background:#fffbeb;border-color:#fde68a}
+body.lecture #lectureHint:not([hidden]){margin:0 var(--shell-gap) 6px;border-radius:12px;border:0;background:#fffbeb}
+
+/* 翻译：改成一枚胶囊开关，去掉原生勾选框 */
+.rec-translate{height:30px;min-height:30px;padding:0 12px;border-radius:999px;border:1px solid #fecdd3;background:#fff;color:#9f1239;font-size:12.5px;font-weight:600;gap:0}
+.rec-translate input[type="checkbox"]{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.rec-translate .reclabel{letter-spacing:.02em}
+.rec-translate.on{background:#e11d48;border-color:#e11d48;color:#fff}
+.rec-translate.on:active{background:#be123c}
+
+/* ===== 朗读：控制条卡片 ===== */
+body.tts #ttsBar{
+  margin:0 var(--shell-gap) 6px;padding:10px 12px;border-radius:var(--shell-radius);
+  border:1px solid var(--shell-line);background:#fff;box-shadow:0 1px 2px rgba(13,148,136,.06);
+}
+
+/* ===== 底部子面板：分段标签 ===== */
+#lectureTabs{display:none}
+body.lecture #lectureTabs{
+  display:flex;gap:4px;margin:0 var(--shell-gap) 4px;padding:5px;border-radius:14px;
+  background:#f1f4f2;border:1px solid rgba(16,45,36,.06);
+}
+body.lecture .lecture-tab{
+  flex:1;height:36px;min-height:36px;border:0;border-radius:9px;
+  background:transparent;color:#5f6f66;font-size:12.5px;font-weight:500;
+}
+body.lecture .lecture-tab.active{background:#fff;color:#be123c;font-weight:600;box-shadow:0 1px 3px rgba(16,45,36,.12)}
+
+/* Python 控制台里的「输出 / 输入」用同一套分段样式 */
+body:not(.gameview) .console{left:6px;right:6px;bottom:6px;border-radius:14px;border-color:var(--shell-line);box-shadow:0 10px 26px rgba(16,45,36,.10)}
+body:not(.gameview) .consolebar{margin:0 8px 8px;padding:4px;gap:3px;border:0;border-radius:11px;background:#f1f4f2}
+body:not(.gameview) .consolebar button{height:26px;min-height:26px;border-radius:8px}
+body:not(.gameview) .consolebar button.active{background:#fff;color:var(--shell-ink);box-shadow:0 1px 3px rgba(16,45,36,.12)}
+
+/* ===== 快捷输入与状态栏 ===== */
+body:not(.gameview) .quickkeys{background:transparent;border-top:0;padding:0 10px 4px}
+body:not(.gameview) .quickkeys button{background:#fff;border:1px solid var(--shell-line);box-shadow:0 1px 2px rgba(16,45,36,.05)}
+body:not(.gameview) .statusbar{
+  height:calc(24px + env(safe-area-inset-bottom));min-height:calc(24px + env(safe-area-inset-bottom));
+  border-top:0;background:transparent;color:#93a29a;padding:0 14px env(safe-area-inset-bottom);
+}
+body.notepad .statusbar,body.tts .statusbar{background:transparent;border-top:0}
+
+/* ===== AI 助手：宽屏时顶栏也收成卡片（手机上是三栏折叠的单列，保持原样更稳） ===== */
+@media(min-width:900px){
+  body.aiview .ai-head{
+    margin:var(--shell-gap) var(--shell-gap) 0;border:1px solid var(--shell-line);
+    border-radius:var(--shell-radius);background:var(--shell-bar);
+  }
+}
+
+/* 窄屏：卡片圆角略收，间距保持 */
+@media(max-width:360px){
+  body:not(.gameview){--shell-gap:6px;--shell-radius:14px}
+}

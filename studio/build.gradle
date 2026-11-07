@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'cn.wuziping.studio'
     compileSdk 34
-    defaultConfig { applicationId 'cn.wuziping.ember'; minSdk 23; targetSdk 34; versionCode 26; versionName '0.1.18' }
+    defaultConfig { applicationId 'cn.wuziping.ember'; minSdk 23; targetSdk 34; versionCode 27; versionName '0.1.19' }
     sourceSets {
         main.java.srcDirs += ['../core/src/main/java','../app/src/main/java']
         main.assets.srcDirs += ['../app/src/main/assets']
