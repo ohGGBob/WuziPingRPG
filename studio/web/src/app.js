@@ -174,7 +174,7 @@ for(const b of document.querySelectorAll('.quickkeys button')){
   view.focus();
  });
 }
-document.addEventListener('keydown',event=>{const mod=event.ctrlKey||event.metaKey;if(mod&&event.key.toLowerCase()==='s'){event.preventDefault();if(!worker)saveFile(event.shiftKey);}else if(event.key==='F5'||mod&&event.key==='Enter'){event.preventDefault();run();}else if(mod&&event.key.toLowerCase()==='o'){event.preventDefault();$('openFile').click();}else if(mod&&event.key.toLowerCase()==='n'){event.preventDefault();nameDialog();}});
+document.addEventListener('keydown',event=>{const mod=event.ctrlKey||event.metaKey;if(mod&&event.key.toLowerCase()==='s'){event.preventDefault();if(worker)notify('运行中无法写回文件，请先停止运行');else saveFile(event.shiftKey);}else if(event.key==='F5'||mod&&event.key==='Enter'){event.preventDefault();run();}else if(mod&&event.key.toLowerCase()==='o'){event.preventDefault();$('openFile').click();}else if(mod&&event.key.toLowerCase()==='n'){event.preventDefault();nameDialog();}});
 window.addEventListener('pagehide',flush);document.addEventListener('visibilitychange',()=>{if(document.hidden)flush();});
 const onViewportChange=()=>{if((window.visualViewport?window.visualViewport.height:innerHeight)<520)setConsole(false);};
 window.addEventListener('resize',onViewportChange);if(window.visualViewport)window.visualViewport.addEventListener('resize',onViewportChange);
@@ -183,7 +183,7 @@ const landing=$('landing'),wheel=$('modeWheel'),enterMode=$('enterMode'),enterMo
 const modeItems=[...wheel.querySelectorAll('.wheel-item')];
 const landingLabels={python:'开始写 Python',notepad:'打开记事本',game:'去星火远征',lecture:'开始上课',tts:'开始英文朗读',ai:'打开 AI 助手'};
 const MODE_KEY='ember-studio-mode';
-let landingOpen=true,landingTimer=0,lastBackAt=0,selectedMode='python',workspaceMode='python',lastCodePath='',lastTtsPath='',wheelSelection=0;
+let landingOpen=true,landingTimer=0,selectedMode='python',workspaceMode='python',lastCodePath='',lastTtsPath='',wheelSelection=0;
 try{const savedMode=localStorage.getItem(MODE_KEY);if(['python','notepad','game','lecture','tts','ai'].includes(savedMode))selectedMode=savedMode;}catch(e){}
 function updateEnterLabel(){if(enterModeLabel)enterModeLabel.textContent=ready?landingLabels[selectedMode]:'正在点亮工作台…';}
 function syncWheel(){const index=Math.max(0,Math.min(modeItems.length-1,wheelSelection));wheelSelection=index;selectedMode=modeItems[index].dataset.mode;modeItems.forEach((el,n)=>{el.classList.toggle('active',n===index);el.setAttribute('aria-selected',String(n===index));});if(landing){landing.dataset.mode=selectedMode;landing.style.setProperty('--sel',String(index));}if(modeIndex)modeIndex.textContent=String(index+1).padStart(2,'0')+' / '+String(modeItems.length).padStart(2,'0');updateEnterLabel();}
@@ -201,11 +201,8 @@ function handleSystemBack(){
       drawing:isDrawMode()||document.body.classList.contains('drawing')||($('drawLayer')&&!$('drawLayer').hidden),
       searchOpen:!!(view&&view.dom.querySelector('.cm-search')),
       landingOpen,
-      now:Date.now(),
-      lastBackAt,
-      doubleWindowMs:2000
+      now:Date.now()
     });
-    lastBackAt=decision.nextLastBackAt;
     switch(decision.action){
       case BACK.DIALOG:
         if(openDialog)openDialog.close('cancel');
@@ -222,18 +219,14 @@ function handleSystemBack(){
         view.focus();
         return true;
       case BACK.LANDING:
-        if(landingOpen)hideLanding();
-        else if(loungeOpen){showCode();setWorkspaceMode('python');lastBackAt=0;}
+        if(loungeOpen){showCode();setWorkspaceMode('python');}
         else{flush();openLanding(true);}
         return true;
-      case BACK.DOUBLE:
-        if(loungeOpen){showCode();setWorkspaceMode('python');lastBackAt=0;return true;}
-        return false;
+      case BACK.PASS:return false;
       default:return false;
     }
   }catch(error){
     console.error('[Studio] back handling failed',error);
-    lastBackAt=0;
     return true;
   }
 }
@@ -242,7 +235,10 @@ function ensureLectureNote(){let note=state.files.find(f=>f.path==='课堂笔记
 function ensureEnglishText(){let text=state.files.find(f=>f.path==='English.txt');if(!text){const activeFile=state.files.find(f=>f.path===state.active&&/\.(txt|md)$/i.test(f.path)&&/[A-Za-z]/.test(f.text||''));if(activeFile)text=activeFile;}if(!text){if(state.files.length>=160){notify('工作区已有 160 个文件，请先打开英文文本或腾出一个文件名额。');return null;}text=makeFile('English.txt','Welcome to English Reading.\n\nType or open an English text here. The reader divides long paragraphs at natural sentence boundaries, so you can follow an entire article without losing your place.\n\nChoose an installed English voice, adjust the speaking rate, and use the same controls to pause, continue, or stop at any time.\n');state.files.push(text);changed();}if(!state.opened.includes(text.path))state.opened.push(text.path);lastTtsPath=text.path;return text;}
 function applyMode(mode){
   if(workspaceMode==='lecture'&&mode!=='lecture'&&lectureBusy()){notify('正在上课录音，请先点「⏹ 停止」结束录音，再切换模式。');selectedMode='lecture';syncWheel();return false;}
-  if(worker&&['python','notepad','tts','ai'].includes(mode)){notify('Python 或 JavaScript 正在运行，请先停止运行，再切换模式。');return false;}
+  /* Game is intentionally excluded: it replaces the editor view while the
+     worker may keep running in the background. Every editor mode, including
+     lecture, stays guarded until the worker is stopped. */
+  if(worker&&['python','notepad','lecture','tts','ai'].includes(mode)){notify('Python 或 JavaScript 正在运行，请先停止运行，再切换模式。');return false;}
   const ttsTarget=mode==='tts'?((lastTtsPath&&state.files.find(x=>x.path===lastTtsPath))||state.files.find(x=>x.path==='English.txt')||ensureEnglishText()):null;
   if(mode==='tts'&&!ttsTarget)return false;
   if(workspaceMode==='tts'&&mode!=='tts')ttsModeLeave();
@@ -270,7 +266,15 @@ function applyMode(mode){
   setTimeout(()=>{if(view)view.focus();},260);
   return true;
 }
-function enterSelected(){if(!ready||!landingOpen)return;const mode=selectedMode;if(!applyMode(mode)){selectedMode=workspaceMode;syncWheel();return;}lastBackAt=0;try{localStorage.setItem(MODE_KEY,mode);}catch(e){}hideLanding();}
+function enterSelected(){
+  if(!ready||!landingOpen)return;
+  const mode=selectedMode;
+  /* Re-selecting the current mode is a cancellation, not a mode switch. */
+  if(mode===workspaceMode){hideLanding();return;}
+  if(!applyMode(mode)){selectedMode=workspaceMode;placeWheel();return;}
+  try{localStorage.setItem(MODE_KEY,mode);}catch(e){}
+  hideLanding();
+}
 const moveSelection=step=>{wheelSelection=Math.max(0,Math.min(modeItems.length-1,wheelSelection+step));syncWheel();};
 let wheelTouchY=0,wheelSwiped=false,wheelLock=0;
 wheel.addEventListener('touchstart',event=>{wheelTouchY=event.touches[0]?.clientY||0;wheelSwiped=false;},{passive:true});
@@ -279,7 +283,7 @@ wheel.addEventListener('wheel',event=>{if(Math.abs(event.deltaY)<4)return;event.
 wheel.addEventListener('keydown',event=>{if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();moveSelection(event.key==='ArrowDown'?1:-1);}else if(event.key==='Enter'){event.preventDefault();enterSelected();}});
 modeItems.forEach(item=>item.addEventListener('click',()=>{if(wheelSwiped)return;const index=modeItems.indexOf(item);if(index!==wheelSelection){wheelSelection=index;syncWheel();return;}enterSelected();}));
 enterMode.addEventListener('click',enterSelected);
-landingBack.addEventListener('click',()=>{lastBackAt=Date.now();hideLanding();});
+landingBack.addEventListener('click',hideLanding);
 window.__studioLandingReady=true;
 initLecture({
   notify,

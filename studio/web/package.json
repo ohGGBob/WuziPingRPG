@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": {"build": "node build.mjs", "test": "node --test tests/tts.test.mjs tests/ai.test.mjs tests/ai-leave.test.mjs tests/ai-agent.test.mjs tests/back.test.mjs tests/draw.test.mjs tests/audio-engine.test.mjs tests/demoire.test.mjs"},
+  "scripts": {"build": "node build.mjs", "test": "node --test tests/*.test.mjs"},
   "dependencies": {
     "codemirror": "^6.0.1",
     "@codemirror/lang-python": "^6.1.6",

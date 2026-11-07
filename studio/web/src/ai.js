@@ -328,6 +328,14 @@ export function aiLeavePlan({busy=false,queueLength=0,agentActive=false}={}){
   if(queued>0)return {cancel:working,dropQueue:true,notice:queued};
   return {cancel:working,dropQueue:false,notice:0};
 }
+export function resetSessionPlan({busy=false,agentRunning=false}={}){
+  return {cancel:!!busy||!!agentRunning,dropQueue:true};
+}
+export function toolResultWithInterruption(result,{cancelled=false,startedToken=0,currentToken=0}={}){
+  const text=String(result==null?'':result).slice(0,8000);
+  const interrupted=startedToken>0&&(cancelled||currentToken!==startedToken);
+  return interrupted?text+'\n\n（工具已执行；本次 AI 任务随后被停止，以上改动已生效。）':text;
+}
 
 /* ---- runtime state (DOM access is confined to initAI and its handlers) ---- */
 let env=null,settings=aiSanitize(null),messages=[],busy=false,currentId='',queue=[],streamBuffer='',dom=null,handledTs=0,msgSeq=1;
@@ -481,6 +489,7 @@ async function resolveCall(message,index,call,outcome){
 }
 async function runTool(call,turn){
   if(!env)return '';
+  const startedToken=Number(turn)||0;
   const prepared=prepareToolArgs(call.tool,call.args||{});
   let result='';
   const def=toolDef(call.tool);
@@ -499,7 +508,7 @@ async function runTool(call,turn){
       else result='unknown tool';
     }catch(e){result='工具执行失败：'+(e&&e.message?e.message:e);}
   }
-  messages.push({role:'tool',content:String(result).slice(0,8000),ts:Date.now(),kind:'tool',name:call.tool,turn:turn||agent.token,id:msgSeq++});
+  messages.push({role:'tool',content:toolResultWithInterruption(result,{cancelled:agent.cancelled,startedToken,currentToken:agent.token}),ts:Date.now(),kind:'tool',name:call.tool,turn:turn||agent.token,id:msgSeq++});
   messages=trimMessages(messages);renderMessages();save();
   return result;
 }
@@ -675,7 +684,11 @@ export function initAI(config){
     startRequest(next);
   };
   if(el('aiNewSession'))el('aiNewSession').onclick=()=>{
-    messages=[];callStates.clear();agent.cancelled=true;agent.running=false;agent.token+=1;renderMessages();save();
+    const reset=resetSessionPlan({busy,agentRunning:agent.running});
+    if(reset.cancel)cancel(reset.dropQueue,false,false);
+    queue=[];messages=[];callStates.clear();streamBuffer='';handledTs=0;
+    agent={on:settings.agentLoop!==false,steps:0,token:agent.token+1,cancelled:true,running:false};
+    renderMessages();renderQueue();applyAppearance();save();
   };
   if(el('aiExport'))el('aiExport').onclick=()=>{const dlg=el('aiSessionDialog');const area=el('aiSessionText');if(area)area.value=JSON.stringify(aiSerialize(),null,2);if(dlg&&dlg.showModal)dlg.showModal();};
   if(el('aiImport'))el('aiImport').onclick=()=>{const dlg=el('aiSessionDialog');const area=el('aiSessionText');if(area)area.value='';if(dlg&&dlg.showModal)dlg.showModal();};

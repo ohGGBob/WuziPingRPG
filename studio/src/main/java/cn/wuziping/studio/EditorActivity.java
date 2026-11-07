@@ -23,6 +23,7 @@ import cn.wuziping.ember.Game;
 public final class EditorActivity extends Activity {
     private WebView web;private AssetServer assets;private PackedAssets packed;private AtomicFile workspace,gameSave;
     private TextToSpeech tts;private boolean ttsReady=false,ttsInitializing=false,ttsRangeSeen=false;private String ttsError="",ttsCurrentId="";private int ttsCharIndex=0,ttsCurrentLength=0;
+    private AlertDialog exitDialog;
     private final ExecutorService io=Executors.newSingleThreadExecutor();private JSONObject pendingExport;private boolean pickerOpen=false,workspaceReadOnly=false;
     private static final int OPEN=30,FOLDER=31,EXPORT=32,GAME_OUT=33,GAME_IN=34,MIC=35,SLIDE=36,SLIDES=37,PPTX=38,TREE=39;
     private static final String SLIDE_PREFIX="slide-cache/";
@@ -556,6 +557,15 @@ public final class EditorActivity extends Activity {
     private void backup(File source,String prefix,String suffix)throws IOException{if(!source.exists())return;try(InputStream in=new FileInputStream(source)){atomic(new AtomicFile(new File(getFilesDir(),prefix+System.currentTimeMillis()+suffix)),TextFiles.read(in,32*1024*1024));}}
     @Override protected void onResume(){super.onResume();if(web!=null){JSONObject o=message("gameState");put(o,"exists",gameSave.getBaseFile().exists()||new File(gameSave.getBaseFile().getPath()+".bak").exists());event(o);}}
     @Override protected void onPause(){if(tts!=null&&ttsCurrentId.length()>0)pauseTts(ttsCurrentId);if(web!=null)web.evaluateJavascript("window.Studio&&window.Studio.flush()",null);super.onPause();}
-    @Override public void onBackPressed(){if(web==null){finish();return;}web.evaluateJavascript("window.Studio&&window.Studio.back?window.Studio.back():false",result->{if(!"true".equals(result))new AlertDialog.Builder(this).setTitle("退出天工？").setMessage("工作区草稿与游戏存档分别保留。").setNegativeButton("继续编辑",null).setPositiveButton("退出",(d,w)->{web.evaluateJavascript("window.Studio&&window.Studio.flush()",v->io.execute(()->runOnUiThread(this::finish)));}).show();});}
+    @Override public void onBackPressed(){if(web==null){finish();return;}web.evaluateJavascript("window.Studio&&window.Studio.back?window.Studio.back():false",result->{if(!"true".equals(result))confirmExit();});}
+    private void confirmExit(){
+        if(web==null||isFinishing()||isDestroyed()){finish();return;}
+        if(exitDialog!=null&&exitDialog.isShowing())return;
+        exitDialog=new AlertDialog.Builder(this).setTitle("退出天工？").setMessage("工作区草稿与游戏存档分别保留。")
+            .setNegativeButton("继续编辑",null)
+            .setPositiveButton("退出",(d,w)->{web.evaluateJavascript("window.Studio&&window.Studio.flush()",v->io.execute(()->runOnUiThread(this::finish)));})
+            .show();
+        exitDialog.setOnDismissListener(d->exitDialog=null);
+    }
     @Override protected void onDestroy(){ui.removeCallbacksAndMessages(null);releaseTts();clearSlideCache();if(web!=null){web.removeJavascriptInterface("StudioBridge");web.destroy();web=null;}if(assets!=null)try{assets.close();}catch(IOException ignored){}if(packed!=null)packed.close();io.shutdown();super.onDestroy();}
 }
