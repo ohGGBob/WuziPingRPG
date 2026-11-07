@@ -187,23 +187,25 @@ $xml = Capture-Step '3' '游戏厅返回' '回到编辑器'
 Press-Back
 $xml = Capture-Step '4' '编辑器返回' '出现模式选择器'
 
-Press-Back
-$xml = Capture-Step '5' '选择器再次返回' '选择器收起且不出现退出对话框' 200
+Tap-Text '返回'
+$xml = Capture-Step '5' '选择器返回按钮' '回到编辑器且不出现退出对话框' 200
 
-# Keep S6 inside the product's two-second double-back window.
 Press-Back
-$xml = Capture-Step '6' '短间隔再次返回' '出现「退出天工？」对话框'
+$xml = Capture-Step '6' '再次打开选择器' '出现模式选择器'
+
+# Fire twice without waiting so the native dialog guard is exercised.
+Press-Back
+Press-Back
+$xml = Capture-Step '7' '快速连续主页返回' '只出现一层「退出天工？」对话框' 200
 $continue = Find-UiNode $xml '继续编辑'
 if ($null -ne $continue) {
     $point = Get-NodeCenter $continue
     Invoke-Adb @('shell', 'input', 'tap', [string]$point[0], [string]$point[1]) | Out-Null
     Start-Sleep -Milliseconds 650
 } else {
-    Write-Warning 'No「继续编辑」node found in step-6.xml; manual verification required.'
+    Write-Warning 'No「继续编辑」node found in step-7.xml; manual verification required.'
 }
 
-Press-Back
-Start-Sleep -Milliseconds 900
 Tap-Text '普通记事本'
 $modeXml = Get-UiXml (Join-Path $outDir '.current.xml')
 if ($null -ne (Find-UiNode $modeXml '选择今天的状态')) {
@@ -211,12 +213,12 @@ if ($null -ne (Find-UiNode $modeXml '选择今天的状态')) {
 }
 Tap-Text '绘图模式'
 Press-Back
-$xml = Capture-Step '7' '记事本画笔返回' '退出绘制模式而不是打开选择器'
+$xml = Capture-Step '8' '记事本画笔返回' '退出绘制模式而不是打开选择器'
 
 Tap-Text '更多操作'
 Tap-Text '查找替换'
 Press-Back
-$xml = Capture-Step '8' '查找面板返回' '关闭查找面板'
+$xml = Capture-Step '9' '查找面板返回' '关闭查找面板'
 
 Write-Host ''
 $rows | Format-Table Step, Expectation, Observed, Manual -AutoSize | Out-String -Width 240 | Write-Host

@@ -3,7 +3,9 @@ $ErrorActionPreference='Stop'
 $root=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $node=Get-Command node.exe -ErrorAction SilentlyContinue
 if($null -eq $node){throw 'Node.js is required for the Studio web tests'}
-& $node.Source --test (Join-Path $root 'studio/web/tests/tts.test.mjs') (Join-Path $root 'studio/web/tests/ai.test.mjs') (Join-Path $root 'studio/web/tests/ai-leave.test.mjs') (Join-Path $root 'studio/web/tests/ai-agent.test.mjs') (Join-Path $root 'studio/web/tests/draw.test.mjs') (Join-Path $root 'studio/web/tests/audio-engine.test.mjs') (Join-Path $root 'studio/web/tests/demoire.test.mjs')
+$tests=@((Get-ChildItem -LiteralPath (Join-Path $root 'studio/web/tests') -Filter '*.test.mjs' -File).FullName)
+if($tests.Count -eq 0){throw 'No Studio web tests were found'}
+& $node.Source --test @tests
 if($LASTEXITCODE -ne 0){throw 'Studio web tests failed'}
 $classes=Join-Path $root 'build/studio-tests'
 New-Item -ItemType Directory -Force -Path $classes | Out-Null

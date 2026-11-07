@@ -28,7 +28,8 @@ const fixture=(aiEnabled=false)=>({
   lecture:null,
   tts:{voice:'',locale:'en-US',rate:1,resumeOffset:0,fingerprint:''},
   drawStrokes:[],
-  ai:{settings:{enabled:aiEnabled,baseUrl:'https://example.com/chat/completions',apiKey:aiEnabled?'test-key':'',model:'deepseek-chat',temperature:.7,system:'test',lang:'zh',theme:'jade',view:'chat',remote:false,remoteUrl:'',autoApprove:false},messages:[]}
+  drawView:null,
+  ai:{settings:{enabled:aiEnabled,baseUrl:'https://example.com/chat/completions',apiKey:aiEnabled?'test-key':'',model:'deepseek-chat',temperature:.7,system:'test',lang:'zh',theme:'jade',view:'chat',remote:false,remoteUrl:'',autoApprove:false,agentLoop:true},messages:[]}
 });
 const openBridge=async(aiEnabled=false)=>{
   const bridgePage=await context.newPage();
@@ -51,6 +52,19 @@ const openBridge=async(aiEnabled=false)=>{
   await bridgePage.waitForSelector('#landing[data-ready="1"]');
   return bridgePage;
 };
+const openPreview=async()=>{
+  const previewPage=await context.newPage();
+  await previewPage.setViewportSize({width:412,height:915});
+  await previewPage.addInitScript(initial=>{
+    try{
+      localStorage.setItem('ember-studio-mode','python');
+      localStorage.setItem('ember-studio-v1',JSON.stringify(initial));
+    }catch(ignored){}
+  },fixture());
+  await previewPage.goto(url,{waitUntil:'networkidle'});
+  await previewPage.waitForSelector('#landing[data-ready="1"]');
+  return previewPage;
+};
 const enterMode=async(bridgePage,mode)=>{
   await bridgePage.locator('.wheel-item[data-mode="'+mode+'"]').click({force:true});
   await bridgePage.evaluate(()=>document.getElementById('enterMode').click());
@@ -72,29 +86,53 @@ await run('game lobby back returns to editor','workbench visible, lounge hidden,
   }finally{await closePage(bridgePage);}
 });
 
-await run('landing back collapses picker','second Studio.back true and landing hidden',async()=>{
+await run('editor back opens the landing screen','first Studio.back true and landing visible',async()=>{
   const bridgePage=await openBridge();
   try{
     await enterMode(bridgePage,'python');
     equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'first back');
     await bridgePage.waitForSelector('#landing:not([hidden])');
-    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'second back');
-    await bridgePage.waitForSelector('#landing',{state:'hidden'});
   }finally{await closePage(bridgePage);}
 });
 
-await run('third back exits after picker toggle','true, true, false across picker close and quick third back',async()=>{
+await run('landing back requests native exit','second Studio.back false and landing remains visible',async()=>{
   const bridgePage=await openBridge();
   try{
     await enterMode(bridgePage,'python');
     equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'first back');
     await bridgePage.waitForSelector('#landing:not([hidden])');
-    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'second back');
-    await bridgePage.waitForSelector('#landing',{state:'hidden'});
-    // Keep the third back inside the product's two-second window.
-    await bridgePage.waitForTimeout(300);
-    equal(await bridgePage.evaluate(()=>window.Studio.back()),false,'third back');
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),false,'second back');
+    await bridgePage.waitForTimeout(100);
+    equal(await bridgePage.locator('#landing').isVisible(),true,'landing visibility');
   }finally{await closePage(bridgePage);}
+});
+
+await run('landing return button cancels picker','mode and files unchanged, editor restored',async()=>{
+  const bridgePage=await openBridge();
+  try{
+    await enterMode(bridgePage,'python');
+    const before=await bridgePage.evaluate(()=>({mode:window.Studio.getState().mode,files:window.Studio.getState().files.length}));
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'first back');
+    await bridgePage.waitForSelector('#landing:not([hidden])');
+    await bridgePage.locator('#landingBack').click();
+    await bridgePage.waitForSelector('#landing',{state:'hidden'});
+    const after=await bridgePage.evaluate(()=>({mode:window.Studio.getState().mode,files:window.Studio.getState().files.length}));
+    equal(after,before,'mode/files after cancel');
+    equal(await bridgePage.locator('#workbench').isVisible(),true,'workbench visibility');
+  }finally{await closePage(bridgePage);}
+});
+
+await run('preview return button cancels picker','non-native preview restores editor',async()=>{
+  const previewPage=await openPreview();
+  try{
+    await enterMode(previewPage,'python');
+    equal(await previewPage.evaluate(()=>window.Studio.back()),true,'first back');
+    await previewPage.waitForSelector('#landing:not([hidden])');
+    await previewPage.locator('#landingBack').click();
+    await previewPage.waitForSelector('#landing',{state:'hidden'});
+    equal(await previewPage.locator('#workbench').isVisible(),true,'workbench visibility');
+    equal(await previewPage.evaluate(()=>typeof window.StudioBridge),'undefined','native bridge');
+  }finally{await closePage(previewPage);}
 });
 
 await run('draw mode back closes drawing layer','drawing false, drawLayer hidden, landing hidden',async()=>{
@@ -139,9 +177,6 @@ await run('AI queue survives picker','no aiCancel, same queue length, AI panel r
     await bridgePage.waitForSelector('#landing:not([hidden])');
     equal(await bridgePage.evaluate(()=>nativeRequests.some(request=>request.type==='aiCancel')),false,'aiCancel request');
     equal(await bridgePage.evaluate(()=>window.Studio.ai().queue.length),before,'queue length while picker open');
-    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'second back handled');
-    await bridgePage.waitForSelector('#landing',{state:'hidden'});
-    equal(await bridgePage.locator('#aiPanel').isVisible(),true,'AI panel visibility');
   }finally{await closePage(bridgePage);}
 });
 
@@ -156,7 +191,7 @@ await run('TTS is not stopped by picker','no ttsStop or ttsPause request',async(
   }finally{await closePage(bridgePage);}
 });
 
-await run('running code blocks notepad switch','notepad class absent, file count unchanged, stop available',async()=>{
+await run('running code blocks editor-mode switches','Ctrl+S feedback, lecture/notepad blocked, stop available',async()=>{
   const bridgePage=await openBridge();
   try{
     await enterMode(bridgePage,'python');
@@ -164,14 +199,24 @@ await run('running code blocks notepad switch','notepad class absent, file count
     await bridgePage.locator('#runButton').click();
     await bridgePage.waitForFunction(()=>document.getElementById('runState').textContent.includes('可停止'),null,{timeout:30000});
     const before=await bridgePage.evaluate(()=>window.Studio.getState().files.length);
+    await bridgePage.keyboard.press('Control+S');
+    await bridgePage.waitForFunction(()=>!document.getElementById('toast').hidden);
+    equal(await bridgePage.locator('#toast').innerText(),'运行中无法写回文件，请先停止运行','Ctrl+S notice');
     equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'Studio.back result');
     await bridgePage.waitForSelector('#landing:not([hidden])');
+    await bridgePage.evaluate(()=>document.getElementById('enterMode').click());
+    await bridgePage.waitForSelector('#landing',{state:'hidden'});
+    equal(await bridgePage.evaluate(()=>window.Studio.getState().mode),'python','current mode cancel');
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'reopen landing');
+    await bridgePage.waitForSelector('#landing:not([hidden])');
     await bridgePage.locator('.wheel-item[data-mode="notepad"]').click({force:true});
-    await bridgePage.locator('.wheel-item[data-mode="notepad"]').click({force:true});
-    await bridgePage.waitForTimeout(150);
+    await bridgePage.evaluate(()=>document.getElementById('enterMode').click());
     equal(await bridgePage.evaluate(()=>document.body.classList.contains('notepad')),false,'notepad class');
+    await bridgePage.locator('.wheel-item[data-mode="lecture"]').click({force:true});
+    await bridgePage.evaluate(()=>document.getElementById('enterMode').click());
+    equal(await bridgePage.evaluate(()=>document.body.classList.contains('lecture')),false,'lecture class');
     equal(await bridgePage.evaluate(()=>window.Studio.getState().files.length),before,'file count');
-    await bridgePage.locator('#landingBack').click();
+    await bridgePage.evaluate(()=>document.getElementById('enterMode').click());
     await bridgePage.waitForSelector('#landing',{state:'hidden'});
     await bridgePage.locator('#stopButton').click();
     await bridgePage.waitForFunction(()=>!document.getElementById('stopButton').offsetParent);

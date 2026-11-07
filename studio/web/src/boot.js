@@ -36,24 +36,31 @@
     if (!host || host.getAttribute('data-boot-failed') === '1') return;
     host.setAttribute('data-boot-failed', '1');
     var box = document.createElement('div');
-    box.style.cssText = 'padding:18px 20px;font:14px/1.6 sans-serif;color:#1f2937;background:#fff';
+    box.setAttribute('role', 'alert');
+    box.style.cssText = 'position:fixed;top:calc(8px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right));z-index:9999;display:flex;align-items:center;gap:10px;padding:9px 10px 9px 14px;border-radius:12px;font:13px/1.4 sans-serif;color:#1f2937;background:#fff;box-shadow:0 10px 28px rgba(15,23,42,.24)';
+    var copy = document.createElement('div');
+    copy.style.cssText = 'min-width:0;flex:1;display:flex;flex-direction:column;gap:2px';
     var title = document.createElement('p');
-    title.style.cssText = 'margin:0 0 6px;font-weight:600';
-    title.textContent = '编辑器脚本没有完成加载。';
-    box.appendChild(title);
-    var hint = document.createElement('p');
-    hint.style.cssText = 'margin:0;color:#64748b';
-    hint.textContent = '请更新 Android System WebView 或 Chrome 后重新打开天工。';
-    box.appendChild(hint);
-    if (errors.length) {
-      var detail = document.createElement('p');
-      detail.style.cssText = 'margin:10px 0 0;font:12px/1.5 monospace;color:#64748b;word-break:break-all;white-space:pre-wrap';
-      detail.textContent = errors.join('\n');
-      box.appendChild(detail);
-    }
+    title.style.cssText = 'margin:0;font-weight:600';
+    title.textContent = '脚本未加载，请重试';
+    copy.appendChild(title);
+    box.appendChild(copy);
+    var retry = document.createElement('button');
+    retry.type = 'button';
+    retry.textContent = '重试';
+    retry.style.cssText = 'flex:none;min-height:36px;padding:0 14px;border:0;border-radius:9px;background:#0f766e;color:#fff;font:600 13px/1 sans-serif';
+    retry.onclick = function () { window.location.reload(); };
+    box.appendChild(retry);
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.setAttribute('aria-label', '关闭启动错误提示');
+    close.textContent = '关闭';
+    close.style.cssText = 'flex:none;min-height:36px;padding:0 10px;border:1px solid #d7e1dc;border-radius:9px;background:#f8fafc;color:#475569;font:500 12px/1 sans-serif';
+    close.onclick = function () { if (box.parentNode) box.parentNode.removeChild(box); };
+    box.appendChild(close);
+    box.title = errors.length ? errors.join('\n') : '若重试仍失败，请更新 Android System WebView。';
     var landing = document.getElementById('landing');
     if (landing) {
-      box.style.cssText += ';position:fixed;left:14px;right:14px;bottom:14px;z-index:9999;border-radius:14px;box-shadow:0 12px 30px rgba(15,23,42,.22)';
       document.body.appendChild(box);
     } else {
       host.appendChild(box);

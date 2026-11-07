@@ -1,14 +1,16 @@
 {
-  "checks": 10,
+  "checks": 12,
   "passed": [
     "game lobby back returns to editor",
-    "landing back collapses picker",
-    "third back exits after picker toggle",
+    "editor back opens the landing screen",
+    "landing back requests native exit",
+    "landing return button cancels picker",
+    "preview return button cancels picker",
     "draw mode back closes drawing layer",
     "search back closes search panel",
     "AI queue survives picker",
     "TTS is not stopped by picker",
-    "running code blocks notepad switch",
+    "running code blocks editor-mode switches",
     "Ctrl+Enter sends AI only",
     "flush happens before landing"
   ],

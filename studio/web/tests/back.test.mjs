@@ -8,9 +8,7 @@ const base={
   drawing:false,
   searchOpen:false,
   landingOpen:false,
-  now:10000,
-  lastBackAt:0,
-  doubleWindowMs:2000
+  now:10000
 };
 
 test('dialog has priority over every other layer',()=>{
@@ -35,45 +33,36 @@ test('search has priority over landing',()=>{
   assert.equal(resolveBack({...base,searchOpen:true,landingOpen:true}).action,BACK.SEARCH);
 });
 
-test('open landing is collapsed and starts a fresh double-back window',()=>{
-  assert.deepEqual(resolveBack({...base,now:10000,landingOpen:true,lastBackAt:9000}),{
+test('open landing passes control to the native exit prompt',()=>{
+  assert.deepEqual(resolveBack({...base,now:10000,landingOpen:true}),{
+    action:BACK.PASS,
+    nextLastBackAt:0
+  });
+});
+
+test('editor back opens the landing screen',()=>{
+  assert.deepEqual(resolveBack({...base,now:10000}),{
     action:BACK.LANDING,
     nextLastBackAt:10000
   });
 });
 
-test('editor outside the double-back window opens landing and records now',()=>{
-  assert.deepEqual(resolveBack({...base,now:10000,lastBackAt:1000,doubleWindowMs:2000}),{
-    action:BACK.LANDING,
-    nextLastBackAt:10000
-  });
-});
-
-test('editor inside the double-back window requests native exit',()=>{
-  assert.deepEqual(resolveBack({...base,now:10000,lastBackAt:9000,doubleWindowMs:2000}),{
-    action:BACK.DOUBLE,
-    nextLastBackAt:0
-  });
-});
-
-test('exact double-back window boundary is treated as a double back',()=>{
-  assert.deepEqual(resolveBack({...base,now:10000,lastBackAt:8000,doubleWindowMs:2000}),{
-    action:BACK.DOUBLE,
-    nextLastBackAt:0
-  });
-});
-
-test('picker collapse followed by a quick editor back requests exit',()=>{
-  const first=resolveBack({...base,now:10000,lastBackAt:0});
-  const second=resolveBack({...base,now:11000,lastBackAt:first.nextLastBackAt,landingOpen:true});
-  const third=resolveBack({...base,now:12000,lastBackAt:second.nextLastBackAt});
+test('editor then landing requires exactly two backs to request exit',()=>{
+  const first=resolveBack({...base,now:10000});
+  const second=resolveBack({...base,now:10001,landingOpen:true});
   assert.equal(first.action,BACK.LANDING);
-  assert.equal(second.action,BACK.LANDING);
-  assert.equal(third.action,BACK.DOUBLE);
+  assert.equal(second.action,BACK.PASS);
+});
+
+test('legacy timing fields cannot turn home into a previous-screen pop',()=>{
+  assert.deepEqual(resolveBack({...base,now:10000,landingOpen:true,lastBackAt:9000,doubleWindowMs:2000}),{
+    action:BACK.PASS,
+    nextLastBackAt:0
+  });
 });
 
 test('missing or undefined context fields do not throw',()=>{
   assert.doesNotThrow(()=>resolveBack());
-  assert.doesNotThrow(()=>resolveBack({dialogOpen:undefined,drawerOpen:null,drawing:undefined,searchOpen:null,landingOpen:undefined,now:undefined,lastBackAt:undefined,doubleWindowMs:undefined}));
+  assert.doesNotThrow(()=>resolveBack({dialogOpen:undefined,drawerOpen:null,drawing:undefined,searchOpen:null,landingOpen:undefined,now:undefined}));
   assert.equal(typeof resolveBack().action,'string');
 });
