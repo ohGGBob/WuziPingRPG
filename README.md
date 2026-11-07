@@ -74,7 +74,7 @@
 
 ## 天工
 
-天工是可安装的 Android 工作台，不是 VS Code 移植。界面用 CodeMirror 6，Python 用打进 APK 的 Pyodide 0.27.7 / CPython 3.12.7，运行资源都在包内。启动页用滑动、滚轮、方向键或点按，在六个模式里选一个。
+天工是可安装的 Android 工作台，不是 VS Code 移植。界面用 CodeMirror 6，Python 用打进 APK 的 Pyodide 0.27.7 / CPython 3.12.7，运行资源都在包内。打开后是首页，点一张卡片就进入；返回键先回到首页，再按一次才询问退出。
 
 | 模式 | 打开之后 |
 | --- | --- |

@@ -52,8 +52,7 @@ const openBridge=async(aiEnabled=false)=>{
   return bridgePage;
 };
 const enterMode=async(bridgePage,mode)=>{
-  await bridgePage.locator('.wheel-item[data-mode="'+mode+'"]').click({force:true});
-  await bridgePage.evaluate(()=>document.getElementById('enterMode').click());
+  await bridgePage.locator('.home-card[data-mode="'+mode+'"]').click();
   await bridgePage.waitForSelector('#landing',{state:'hidden'});
   await bridgePage.waitForTimeout(450);
 };
@@ -72,28 +71,27 @@ await run('game lobby back returns to editor','workbench visible, lounge hidden,
   }finally{await closePage(bridgePage);}
 });
 
-await run('landing back collapses picker','second Studio.back true and landing hidden',async()=>{
+await run('back from a mode opens home and a second back asks to exit','home stays open, back is true then false',async()=>{
   const bridgePage=await openBridge();
   try{
     await enterMode(bridgePage,'python');
     equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'first back');
     await bridgePage.waitForSelector('#landing:not([hidden])');
-    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'second back');
-    await bridgePage.waitForSelector('#landing',{state:'hidden'});
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),false,'second back');
+    equal(await bridgePage.locator('#landing').isVisible(),true,'home stays visible');
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),false,'repeated back still exits');
   }finally{await closePage(bridgePage);}
 });
 
-await run('third back exits after picker toggle','true, true, false across picker close and quick third back',async()=>{
+await run('home return button restores the same work','landing hidden and python file still active',async()=>{
   const bridgePage=await openBridge();
   try{
     await enterMode(bridgePage,'python');
-    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'first back');
-    await bridgePage.waitForSelector('#landing:not([hidden])');
-    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'second back');
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'back home');
+    await bridgePage.waitForSelector('#landingBack:not([hidden])');
+    await bridgePage.locator('#landingBack').click();
     await bridgePage.waitForSelector('#landing',{state:'hidden'});
-    // Keep the third back inside the product's two-second window.
-    await bridgePage.waitForTimeout(300);
-    equal(await bridgePage.evaluate(()=>window.Studio.back()),false,'third back');
+    equal(await bridgePage.evaluate(()=>window.Studio.getState().active),'main.py','active file');
   }finally{await closePage(bridgePage);}
 });
 
@@ -138,10 +136,10 @@ await run('AI queue survives picker','no aiCancel, same queue length, AI panel r
     equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'Studio.back result');
     await bridgePage.waitForSelector('#landing:not([hidden])');
     equal(await bridgePage.evaluate(()=>nativeRequests.some(request=>request.type==='aiCancel')),false,'aiCancel request');
-    equal(await bridgePage.evaluate(()=>window.Studio.ai().queue.length),before,'queue length while picker open');
-    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'second back handled');
-    await bridgePage.waitForSelector('#landing',{state:'hidden'});
-    equal(await bridgePage.locator('#aiPanel').isVisible(),true,'AI panel visibility');
+    equal(await bridgePage.evaluate(()=>window.Studio.ai().queue.length),before,'queue length while home is open');
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),false,'second back asks to exit');
+    equal(await bridgePage.locator('#landing').isVisible(),true,'home stays open');
+    equal(await bridgePage.evaluate(()=>window.Studio.ai().queue.length),before,'queue survives the exit request');
   }finally{await closePage(bridgePage);}
 });
 
@@ -166,10 +164,12 @@ await run('running code blocks notepad switch','notepad class absent, file count
     const before=await bridgePage.evaluate(()=>window.Studio.getState().files.length);
     equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'Studio.back result');
     await bridgePage.waitForSelector('#landing:not([hidden])');
-    await bridgePage.locator('.wheel-item[data-mode="notepad"]').click({force:true});
-    await bridgePage.locator('.wheel-item[data-mode="notepad"]').click({force:true});
+    await bridgePage.locator('.home-card[data-mode="notepad"]').click();
     await bridgePage.waitForTimeout(150);
     equal(await bridgePage.evaluate(()=>document.body.classList.contains('notepad')),false,'notepad class');
+    await bridgePage.locator('.home-card[data-mode="lecture"]').click();
+    await bridgePage.waitForTimeout(150);
+    equal(await bridgePage.evaluate(()=>document.body.classList.contains('lecture')),false,'lecture class');
     equal(await bridgePage.evaluate(()=>window.Studio.getState().files.length),before,'file count');
     await bridgePage.locator('#landingBack').click();
     await bridgePage.waitForSelector('#landing',{state:'hidden'});
@@ -214,7 +214,113 @@ await run('flush happens before landing','snapshot request precedes visible land
   }finally{await closePage(bridgePage);}
 });
 
-const report={checks:passed.length+failed.length,passed,failed,env:{viewport:'412x915',mode:'browser'}};
+await run('new AI session cancels the in-flight request','aiCancel is sent and the session is no longer busy',async()=>{
+  const bridgePage=await openBridge(true);
+  try{
+    await enterMode(bridgePage,'ai');
+    await bridgePage.locator('#aiInput').fill('please keep working');
+    await bridgePage.locator('#aiSend').click();
+    await bridgePage.waitForFunction(()=>nativeRequests.some(request=>request.type==='aiRequest'));
+    await bridgePage.locator('#aiNewSession').click();
+    await bridgePage.waitForFunction(()=>nativeRequests.some(request=>request.type==='aiCancel'));
+    const state=await bridgePage.evaluate(()=>({busy:window.Studio.ai().busy,messages:window.Studio.ai().messages.length,cancels:nativeRequests.filter(request=>request.type==='aiCancel').length}));
+    equal(state.busy,false,'busy');
+    equal(state.messages,0,'messages');
+    equal(state.cancels>0,true,'cancel count');
+  }finally{await closePage(bridgePage);}
+});
+
+await run('reselecting the current card does not leave the file','notepad path stays after a second entry',async()=>{
+  const bridgePage=await openBridge();
+  try{
+    await enterMode(bridgePage,'notepad');
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'back home');
+    await bridgePage.waitForSelector('#landing:not([hidden])');
+    await bridgePage.locator('.home-card[data-mode="notepad"]').click();
+    await bridgePage.waitForSelector('#landing',{state:'hidden'});
+    equal(await bridgePage.evaluate(()=>window.Studio.getState().active),'笔记.txt','active file');
+    equal(await bridgePage.evaluate(()=>document.body.classList.contains('notepad')),true,'notepad class');
+  }finally{await closePage(bridgePage);}
+});
+
+await run('lecture subview back returns to notes before home','timeline click then back stays in lecture on notes',async()=>{
+  const bridgePage=await openBridge();
+  try{
+    await bridgePage.setViewportSize({width:390,height:844});
+    await enterMode(bridgePage,'lecture');
+    await bridgePage.locator('.lecture-tab[data-tab="timeline"]').click();
+    equal(await bridgePage.evaluate(()=>document.body.dataset.lectureTab),'timeline','tab before back');
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'back');
+    equal(await bridgePage.evaluate(()=>document.body.dataset.lectureTab||'notes'),'notes','tab after back');
+    equal(await bridgePage.locator('#landing').isHidden(),true,'still in lecture');
+  }finally{await closePage(bridgePage);}
+});
+
+await run('game opened from home returns home','mode stays game and the homepage is visible',async()=>{
+  const bridgePage=await openBridge();
+  try{
+    await enterMode(bridgePage,'game');
+    equal(await bridgePage.evaluate(()=>window.Studio.back()),true,'back');
+    await bridgePage.waitForSelector('#landing:not([hidden])');
+    equal(await bridgePage.evaluate(()=>window.Studio.getState().mode),'game','mode');
+  }finally{await closePage(bridgePage);}
+});
+
+await run('home layout stays reachable on short and landscape screens','logo, title and cards do not overlap and the last card can scroll into view',async()=>{
+  const bridgePage=await openBridge();
+  try{
+    const css=await bridgePage.evaluate(()=>[...document.styleSheets].flatMap(sheet=>{try{return [...sheet.cssRules].map(rule=>rule.cssText);}catch(e){return [];}}).join('\n'));
+    equal(css.includes('env(safe-area-inset-top)'),true,'top safe area');
+    equal(css.includes('env(safe-area-inset-left)'),true,'left safe area');
+    equal(css.includes('env(safe-area-inset-right)'),true,'right safe area');
+    const sizes=[[320,568],[360,640],[390,844],[640,360]];
+    for(const [width,height] of sizes){
+      await bridgePage.setViewportSize({width,height});
+      const measure=await bridgePage.evaluate(insets=>{
+        const landing=document.getElementById('landing');
+        landing.style.paddingTop=(8+insets.top)+'px';
+        landing.style.paddingRight=(8+insets.right)+'px';
+        landing.style.paddingBottom=(8+insets.bottom)+'px';
+        landing.style.paddingLeft=(8+insets.left)+'px';
+        const back=document.getElementById('landingBack');
+        back.hidden=false;
+        const scroller=document.getElementById('homeScroll');
+        scroller.scrollTop=0;
+        const overlap=(a,b)=>a.left<b.right-1&&a.right>b.left+1&&a.top<b.bottom-1&&a.bottom>b.top+1;
+        const box=landing.getBoundingClientRect();
+        const brand=document.getElementById('homeBrand').getBoundingClientRect();
+        const title=document.getElementById('homeTitle').getBoundingClientRect();
+        const status=document.querySelector('.home-status').getBoundingClientRect();
+        const first=document.querySelector('.home-card[data-mode="python"]').getBoundingClientRect();
+        const last=document.querySelector('.home-card[data-mode="game"]');
+        last.scrollIntoView({block:'end'});
+        const reached=last.getBoundingClientRect();
+        const view=landing.getBoundingClientRect();
+        return {
+          brandTitle:overlap(brand,title),
+          brandStatus:overlap(brand,status),
+          titleStatus:overlap(title,status),
+          brandBack:overlap(brand,back.getBoundingClientRect()),
+          brandInside:brand.left>=box.left-1&&brand.right<=box.right+1&&brand.top>=box.top-1,
+          firstWidth:first.width,
+          lastVisible:reached.top<view.bottom-2&&reached.bottom>view.top+2&&reached.left>=view.left-1&&reached.right<=view.right+1,
+          scrollWidth:document.documentElement.scrollWidth,
+          innerWidth:window.innerWidth
+        };
+      },{top:47,right:34,bottom:21,left:34});
+      equal(measure.brandTitle,false,width+'x'+height+' brand/title');
+      equal(measure.brandStatus,false,width+'x'+height+' brand/status');
+      equal(measure.titleStatus,false,width+'x'+height+' title/status');
+      equal(measure.brandBack,false,width+'x'+height+' brand/back');
+      equal(measure.brandInside,true,width+'x'+height+' brand inside');
+      equal(measure.firstWidth>40,true,width+'x'+height+' card width');
+      equal(measure.lastVisible,true,width+'x'+height+' last card');
+      equal(measure.scrollWidth<=measure.innerWidth+1,true,width+'x'+height+' overflow');
+    }
+  }finally{await closePage(bridgePage);}
+});
+
+const report={checks:passed.length+failed.length,passed,failed,env:{viewport:'412x915 plus home sizes',mode:'browser'}};
 await fs.mkdir(root+'/artifacts/studio-v0.1',{recursive:true});
 if(failed.length===0){
   await fs.writeFile(root+'/artifacts/studio-v0.1/interface-fix-checks.json',JSON.stringify(report,null,2)+'\n');

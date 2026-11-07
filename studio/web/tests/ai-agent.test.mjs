@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   AI_TOOLS, DEVICE_TOOLS, PHONE_TOOLS, ALARM_ACTIONS, AGENT_MAX_STEPS,
   parseToolCalls, prepareToolArgs, planAgentTurn, planAfterTool, runAgentScript,
-  toolNeedsApproval, requestBody, aiSanitize, aiLeavePlan, alarmAllows, validHttpUrl
+  toolNeedsApproval, requestBody, aiSanitize, aiLeavePlan, resetSessionPlan, toolResultWithInterruption, alarmAllows, validHttpUrl
 } from '../src/ai.js';
 
 test('phone tools are registered and routed to the device bridge', () => {
@@ -140,6 +140,18 @@ test('leaving during an approval wait cancels the agent task', () => {
     cancel: true, dropQueue: false, notice: 0
   });
   assert.equal(aiLeavePlan({ busy: false, queueLength: 0 }).cancel, false);
+});
+
+test('starting a new AI session cancels active work and drops pending messages', () => {
+  assert.deepEqual(resetSessionPlan({ busy: true, agentRunning: false }), { cancel: true, dropQueue: true });
+  assert.deepEqual(resetSessionPlan({ busy: false, agentRunning: true }), { cancel: true, dropQueue: true });
+  assert.deepEqual(resetSessionPlan({ busy: false, agentRunning: false }), { cancel: false, dropQueue: true });
+});
+
+test('a tool that finishes after stop leaves a visible executed result', () => {
+  assert.match(toolResultWithInterruption('已写入 main.py',{cancelled:true,startedToken:4,currentToken:5}),/工具已执行/);
+  assert.match(toolResultWithInterruption('已写入 main.py',{startedToken:4,currentToken:5}),/以上改动已生效/);
+  assert.equal(toolResultWithInterruption('已写入 main.py',{startedToken:4,currentToken:4}),'已写入 main.py');
 });
 
 test('multi-step phone task observes, waits for approval, then answers', () => {

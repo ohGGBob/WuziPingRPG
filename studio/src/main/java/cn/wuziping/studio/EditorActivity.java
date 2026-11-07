@@ -23,7 +23,7 @@ import cn.wuziping.ember.Game;
 public final class EditorActivity extends Activity {
     private WebView web;private AssetServer assets;private PackedAssets packed;private AtomicFile workspace,gameSave;
     private TextToSpeech tts;private boolean ttsReady=false,ttsInitializing=false,ttsRangeSeen=false;private String ttsError="",ttsCurrentId="";private int ttsCharIndex=0,ttsCurrentLength=0;
-    private final ExecutorService io=Executors.newSingleThreadExecutor();private JSONObject pendingExport;private boolean pickerOpen=false,workspaceReadOnly=false;
+    private final ExecutorService io=Executors.newSingleThreadExecutor();private JSONObject pendingExport;private boolean pickerOpen=false,workspaceReadOnly=false,keyboardVisible=false;private AlertDialog exitDialog;
     private static final int OPEN=30,FOLDER=31,EXPORT=32,GAME_OUT=33,GAME_IN=34,MIC=35,SLIDE=36,SLIDES=37,PPTX=38,TREE=39;
     private static final String SLIDE_PREFIX="slide-cache/";
     private File slideCache;
@@ -87,7 +87,7 @@ public final class EditorActivity extends Activity {
             public void resourceFailed(String url,String description){onResourceFailed(url,description);}
             public void rendererGone(boolean crashed){onRendererGone();}
         }));
-        web.addJavascriptInterface(new Bridge(),"StudioBridge");setContentView(web);web.requestFocus();startTransport();
+        web.addJavascriptInterface(new Bridge(),"StudioBridge");setContentView(web);watchKeyboard();web.requestFocus();startTransport();
     }catch(Throwable e){fatal("天工没能打开："+e.getClass().getSimpleName()+" "+e.getMessage());}}
     /* 上课模式的 PPT 照片：原生只把相册原图复制进缓存目录，页面用同源 URL 读取。
        这样既不依赖 WebView 的 content:// 访问，也不用把几 MB 的 base64 塞进
@@ -556,6 +556,49 @@ public final class EditorActivity extends Activity {
     private void backup(File source,String prefix,String suffix)throws IOException{if(!source.exists())return;try(InputStream in=new FileInputStream(source)){atomic(new AtomicFile(new File(getFilesDir(),prefix+System.currentTimeMillis()+suffix)),TextFiles.read(in,32*1024*1024));}}
     @Override protected void onResume(){super.onResume();if(web!=null){JSONObject o=message("gameState");put(o,"exists",gameSave.getBaseFile().exists()||new File(gameSave.getBaseFile().getPath()+".bak").exists());event(o);}}
     @Override protected void onPause(){if(tts!=null&&ttsCurrentId.length()>0)pauseTts(ttsCurrentId);if(web!=null)web.evaluateJavascript("window.Studio&&window.Studio.flush()",null);super.onPause();}
-    @Override public void onBackPressed(){if(web==null){finish();return;}web.evaluateJavascript("window.Studio&&window.Studio.back?window.Studio.back():false",result->{if(!"true".equals(result))new AlertDialog.Builder(this).setTitle("退出天工？").setMessage("工作区草稿与游戏存档分别保留。").setNegativeButton("继续编辑",null).setPositiveButton("退出",(d,w)->{web.evaluateJavascript("window.Studio&&window.Studio.flush()",v->io.execute(()->runOnUiThread(this::finish)));}).show();});}
+    /** The editor is one page. WebView history would drop the workspace, so back never calls goBack(). */
+    private void watchKeyboard(){
+        final View decor=getWindow().getDecorView();
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener(){
+            @Override public void onGlobalLayout(){
+                android.graphics.Rect rect=new android.graphics.Rect();
+                decor.getWindowVisibleDisplayFrame(rect);
+                int root=decor.getRootView().getHeight();
+                keyboardVisible=root>0&&root-rect.height()>root/6;
+            }
+        });
+    }
+    private static String decodeJsString(String raw){
+        if(raw==null||raw.equals("null")||raw.equals("undefined"))return "";
+        if(raw.length()>=2&&raw.charAt(0)=='"'){
+            try{return new JSONArray("["+raw+"]").getString(0);}catch(Exception ignored){return "";}
+        }
+        return raw;
+    }
+    private void confirmExit(){
+        if(web==null||isFinishing()||isDestroyed())return;
+        if(exitDialog!=null&&exitDialog.isShowing())return;
+        web.evaluateJavascript("window.Studio&&window.Studio.exitMessage?window.Studio.exitMessage():''",raw->{
+            if(web==null||isFinishing()||isDestroyed())return;
+            if(exitDialog!=null&&exitDialog.isShowing())return;
+            String message=decodeJsString(raw);
+            if(message.isEmpty())message="草稿会留在本机。还没点「保存」的内容不会写回手机上的原文件。游戏存档另外保存。";
+            exitDialog=new AlertDialog.Builder(this).setTitle("退出天工？").setMessage(message).setNegativeButton("留在天工",null).setPositiveButton("退出",(d,w)->{
+                if(web==null)return;
+                web.evaluateJavascript("window.Studio&&window.Studio.flush()",v->io.execute(()->runOnUiThread(this::finish)));
+            }).create();
+            exitDialog.setOnDismissListener(d->exitDialog=null);
+            exitDialog.show();
+        });
+    }
+    @Override public void onBackPressed(){
+        if(web==null){finish();return;}
+        if(keyboardVisible){
+            android.view.inputmethod.InputMethodManager imm=(android.view.inputmethod.InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
+            if(imm!=null)imm.hideSoftInputFromWindow(web.getWindowToken(),0);
+            return;
+        }
+        web.evaluateJavascript("window.Studio&&window.Studio.back?window.Studio.back():false",result->{if(!"true".equals(result))confirmExit();});
+    }
     @Override protected void onDestroy(){ui.removeCallbacksAndMessages(null);releaseTts();clearSlideCache();if(web!=null){web.removeJavascriptInterface("StudioBridge");web.destroy();web=null;}if(assets!=null)try{assets.close();}catch(IOException ignored){}if(packed!=null)packed.close();io.shutdown();super.onDestroy();}
 }
