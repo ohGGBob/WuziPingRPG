@@ -333,6 +333,38 @@ class BuildToolsSelection(unittest.TestCase):
             self.assertEqual(verify_choice.name, "36.1.0")
             self.assertEqual(build_choice.name, "34.0.0")
 
+    def test_print_build_tools_cli_reports_a_missing_sdk_without_traceback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            sdk = Path(temp)
+            (sdk / "build-tools").mkdir()
+            completed = subprocess.run(
+                [sys.executable, str(verify_support.ROOT / "tools/verify_support.py"),
+                 "--sdk-root", str(sdk), "--print-build-tools"],
+                check=False, capture_output=True, text=True,
+            )
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, "")
+        self.assertNotIn("Traceback", completed.stderr)
+        self.assertNotIn("NameError", completed.stderr)
+        self.assertIn("no build-tools directory contains", completed.stderr)
+
+    def test_print_build_tools_cli_explicit_incomplete_does_not_fall_back(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.plant(root, "36.1.0", tools=("zipalign", "aapt", "apksigner.jar", "aapt2", "d8.jar"))
+            self.plant(root, "34.0.0", tools=("zipalign",))
+            completed = subprocess.run(
+                [sys.executable, str(verify_support.ROOT / "tools/verify_support.py"),
+                 "--sdk-root", str(root), "--build-tools", "34.0.0", "--print-build-tools", "--for-build"],
+                check=False, capture_output=True, text=True,
+            )
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(completed.stdout, "")
+        self.assertNotIn("Traceback", completed.stderr)
+        self.assertNotIn("36.1.0", completed.stdout + completed.stderr)
+        self.assertIn("does not fall back", completed.stderr)
+        self.assertIn("d8.jar", completed.stderr)
+
     def test_android_home_finds_36_without_a_34_directory(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
