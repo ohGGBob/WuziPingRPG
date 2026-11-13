@@ -18,10 +18,9 @@ from verify_support import (
     ROOT,
     bytes_match,
     checksum_map,
+    locate_release_tools,
     read_gradle_version,
     render_gate,
-    resolve_java,
-    resolve_sdk_tool,
     sha256_file,
 )
 
@@ -83,20 +82,21 @@ def check_assets(archive: zipfile.ZipFile) -> tuple[list[str], list[str], list[s
     return bad, newlines, extra
 
 
-def run_sdk_checks(path: Path, package: str, version) -> None:
-    java = resolve_java()
-    zipalign = resolve_sdk_tool(None, "zipalign")
-    aapt = resolve_sdk_tool(None, "aapt")
-    apksigner = resolve_sdk_tool(None, "apksigner")
-    if apksigner is None:
-        lib = None
+def record_tools(tools) -> None:
+    if tools.java:
+        record("java", "PASS", str(tools.java))
     else:
-        lib = apksigner.parent / "lib" / "apksigner.jar"
-        if not lib.is_file():
-            lib = None
-    if java and lib:
+        record("java", "SKIP", tools.java_detail)
+    if tools.build_tools:
+        record("build-tools", "PASS", str(tools.build_tools))
+    else:
+        record("build-tools", "SKIP", tools.sdk_detail)
+
+
+def run_sdk_checks(path: Path, package: str, version, tools) -> None:
+    if tools.java and tools.apksigner_jar:
         signature = subprocess.check_output(
-            [str(java), "-jar", str(lib), "verify", "--verbose", "--print-certs", str(path)],
+            [str(tools.java), "-jar", str(tools.apksigner_jar), "verify", "--verbose", "--print-certs", str(path)],
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -104,16 +104,12 @@ def run_sdk_checks(path: Path, package: str, version) -> None:
         if "Verified using v2 scheme (APK Signature Scheme v2): true" not in signature:
             raise AssertionError("v2 signature was not verified")
         record(f"signature {path.name}", "PASS", "v2 signature verified")
-    else:
-        record(f"signature {path.name}", "SKIP", "java or apksigner.jar is not on this machine")
-    if zipalign:
-        subprocess.run([str(zipalign), "-c", "4", str(path)], check=True)
-        record(f"alignment {path.name}", "PASS", "zipalign -c 4")
-    else:
-        record(f"alignment {path.name}", "SKIP", "zipalign is not on this machine")
-    if aapt:
+    if tools.zipalign:
+        subprocess.run([str(tools.zipalign), "-c", "4", str(path)], check=True)
+        record(f"alignment {path.name}", "PASS", f"zipalign -c 4 ({tools.build_tools.name})")
+    if tools.aapt:
         meta = subprocess.check_output(
-            [str(aapt), "dump", "badging", str(path)],
+            [str(tools.aapt), "dump", "badging", str(path)],
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -124,8 +120,6 @@ def run_sdk_checks(path: Path, package: str, version) -> None:
         if "launchable-activity: name='cn.wuziping.ember.MainActivity'" not in meta:
             raise AssertionError("launchable activity is not MainActivity")
         record(f"badging {path.name}", "PASS", expected)
-    else:
-        record(f"badging {path.name}", "SKIP", "aapt is not on this machine")
 
 
 def print_table() -> None:
@@ -145,15 +139,12 @@ def finish(strict: bool) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jdk-root", default=None, help="JDK root. Defaults to JAVA_HOME, then java on PATH.")
-    parser.add_argument("--sdk-root", default=None, help="Android SDK root. Defaults to ANDROID_HOME or ANDROID_SDK_ROOT.")
+    parser.add_argument("--sdk-root", default=None, help="Android SDK root. Defaults to ANDROID_HOME, then ANDROID_SDK_ROOT.")
+    parser.add_argument("--build-tools", default=None, help="Build-tools version. Defaults to ANDROID_BUILD_TOOLS, else the highest complete install.")
     parser.add_argument("--strict", action="store_true", help="Release gate: missing SDK tools and known resource gaps exit non-zero.")
     args = parser.parse_args(argv)
-    if args.jdk_root:
-        import os
-        os.environ["JAVA_HOME"] = args.jdk_root
-    if args.sdk_root:
-        import os
-        os.environ["ANDROID_SDK_ROOT"] = args.sdk_root
+    tools = locate_release_tools(jdk_root=args.jdk_root, sdk_root=args.sdk_root, build_tools=args.build_tools)
+    record_tools(tools)
 
     try:
         version = read_gradle_version(ROOT / "app" / "build.gradle")
@@ -209,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
                     )
             record(f"zip {name}", "PASS", f"package {package}")
             try:
-                run_sdk_checks(path, package, version)
+                run_sdk_checks(path, package, version, tools)
             except Exception as error:
                 record(f"sdk {name}", "FAIL", f"{type(error).__name__}: {error}")
         except Exception as error:

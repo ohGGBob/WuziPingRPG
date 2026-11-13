@@ -15,16 +15,21 @@ python3 tools/verify-studio-release.py
 node tools/test-merged-ui.js
 ```
 
-严格发行门槛。缺 `java`、`zipalign`、`aapt`、`apksigner`，或已发布包相对源码仍有记录在案的资源缺口时，退出码非零，最后一行是 `EXIT: FAIL`。
+严格发行门槛。缺 `java`，或缺一套完整的 build-tools（`zipalign`、`aapt`、`lib/apksigner.jar`），或已发布包相对源码仍有记录在案的资源缺口时，退出码非零，最后一行是 `EXIT: FAIL`。Java 和 SDK 分开记：没有 JDK 不会被写成 apksigner 缺失，反过来也一样。
+
+Build-tools 不必是 34.0.0。`--build-tools` 或环境变量 `ANDROID_BUILD_TOOLS` 指定版本，并且只使用该版本，不会改去找另一个已安装版本。两者都没写时，在 `--sdk-root`、否则 `ANDROID_HOME`、再否则 `ANDROID_SDK_ROOT` 下面，选用最高的完整版本。例如本机只有 `build-tools/36.1.0` 时就会用 36.1.0。
 
 ```bash
+export ANDROID_HOME=/home/box/opt/android-sdk
 python3 tools/verify-release.py --strict
 python3 tools/verify-studio-release.py --strict
+# 或者写死版本
+python3 tools/verify-studio-release.py --sdk-root /home/box/opt/android-sdk --build-tools 36.1.0 --strict
 ```
 
-在当前已提交的 0.7.1 / 0.3.18 包上，严格模式**应当失败**。失败原因写在表里，不要靠删掉 KNOWN 行或换一个空包让它变绿。等以后的包同时满足下面两件事，严格模式才会变成 `EXIT: PASS`：
+在当前已提交的 0.7.1 / 0.3.18 包上，严格模式应当失败，摘要里的 `FAIL=` 必须是 0。非零的 `FAIL=` 表示校验和、坏包或工具实际跑失败，不能当成「只有已知缺口」放过。`SKIP=` 在工具齐全时可以是 0，不能为了旧的 34.0.0 路径去要求它一定出现。等以后的包同时满足下面两件事，严格模式才会变成 `EXIT: PASS`：
 
-- 本机看得到 JDK 17 和 Android SDK Build-Tools 34.0.0 里的 `zipalign`、`aapt`、`apksigner.jar`
+- 本机看得到 JDK，并且选定的 build-tools 里有 `zipalign`、`aapt`、`lib/apksigner.jar`
 - 游戏包含 `HistoryJourney` 和五张残灯渡图；天工包里的 `assets/studio/editor.page` 与 `index.html` 一致
 
 逻辑回归是另一条命令，不计入上面的发行摘要：
@@ -72,4 +77,4 @@ x86 或 x86_64 模拟器若没有 ARM 翻译，扫描相关的原生库加载不
 - 游戏 `dist/WuziPing-Emberbound-0.7.1-debug.apk` 与共存包的 `classes.dex` 没有 `HistoryJourney`。源码和 `tools/tests/HistoryTests.java` 里有这个类。
 - 同一对游戏包没有这五张图：`history_bandit.png`、`history_commander.png`、`history_ford.png`、`history_road.png`、`history_soldier.png`。它们在 `app/src/main/assets/`。包内已有的资源与源码一致；缺口是源码多出来的文件。
 - 天工 `dist/Ember-Studio-0.3.18.apk` 的 `assets/studio/editor.page` 仍是旧页。`PackedAssets` 读取页面时先打开 `assets/studio/index.html`，那份与当前源码一致。回退页要等下一次打包才会更新。
-- 本机没有 Build-Tools 时，签名、zipalign 和 badging 记为 SKIP。开发检查因此是 `INCOMPLETE`。`--strict` 会失败。
+- 没有选定完整 build-tools 时，`build-tools` 单独记为 SKIP，不把 Java 写成缺失。工具齐全时这一行是 PASS，`--strict` 仍会因为上面的 KNOWN 失败。打包脚本 `tools/build-apk.sh` 和 `tools/build-studio.sh` 仍使用 Build-Tools 34.0.0 来产出新包；只读核验不下载 SDK，也不固定 34.0.0。

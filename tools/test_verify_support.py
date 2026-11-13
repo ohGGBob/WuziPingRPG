@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 import tempfile
@@ -203,6 +204,132 @@ class Gate(unittest.TestCase):
         code, verdict, _counts = verify_support.gate_verdict(rows, strict=False)
         self.assertEqual((code, verdict), (1, "FAIL"))
 
+    def test_tools_present_and_only_known_gaps_stay_a_strict_failure(self):
+        rows = [
+            ("java", "PASS", "/usr/bin/java"),
+            ("build-tools", "PASS", "/opt/android-sdk/build-tools/36.1.0"),
+            ("signature", "PASS", "v2"),
+            ("history class", "KNOWN", "published dex has no HistoryJourney"),
+            ("assets ahead", "KNOWN", "history_road.png"),
+        ]
+        self.assertTrue(verify_support.is_known_gap_only(rows))
+        text = verify_support.render_gate(rows, strict=True)[1]
+        self.assertTrue(verify_support.summary_is_known_gap_only(text))
+        self.assertIn("FAIL=0", text)
+        self.assertIn("SKIP=0", text)
+
+    def test_an_extra_fail_is_not_covered_by_known_gaps(self):
+        rows = [
+            ("java", "PASS", "/usr/bin/java"),
+            ("build-tools", "PASS", "/opt/android-sdk/build-tools/36.1.0"),
+            ("checksum", "FAIL", "hash mismatch"),
+            ("history class", "KNOWN", "published dex has no HistoryJourney"),
+        ]
+        self.assertFalse(verify_support.is_known_gap_only(rows))
+        code, text = verify_support.render_gate(rows, strict=True)
+        self.assertEqual(code, 1)
+        self.assertIn("EXIT: FAIL", text)
+        self.assertIn("FAIL=1", text)
+        self.assertFalse(verify_support.summary_is_known_gap_only(text))
+
+    def test_complete_success_is_a_strict_pass(self):
+        rows = [
+            ("java", "PASS", "/usr/bin/java"),
+            ("build-tools", "PASS", "/opt/android-sdk/build-tools/36.1.0"),
+            ("apk", "PASS", "ok"),
+        ]
+        code, verdict, counts = verify_support.gate_verdict(rows, strict=True)
+        self.assertEqual((code, verdict), (0, "PASS"))
+        self.assertEqual((counts["FAIL"], counts["SKIP"], counts["KNOWN"]), (0, 0, 0))
+        self.assertFalse(verify_support.is_known_gap_only(rows))
+
+
+class BuildToolsSelection(unittest.TestCase):
+    def setUp(self):
+        self._saved = {
+            key: os.environ.get(key)
+            for key in ("ANDROID_HOME", "ANDROID_SDK_ROOT", "ANDROID_BUILD_TOOLS")
+        }
+        for key in self._saved:
+            os.environ.pop(key, None)
+
+    def tearDown(self):
+        for key, value in self._saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+    def plant(self, root: Path, version: str, tools=("zipalign", "aapt", "apksigner.jar")):
+        directory = root / "build-tools" / version
+        (directory / "lib").mkdir(parents=True)
+        if "zipalign" in tools:
+            (directory / "zipalign").write_bytes(b"")
+        if "aapt" in tools:
+            (directory / "aapt").write_bytes(b"")
+        if "apksigner.jar" in tools:
+            (directory / "lib" / "apksigner.jar").write_bytes(b"")
+        return directory
+
+    def test_highest_complete_version_wins(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.plant(root, "34.0.0")
+            self.plant(root, "36.1.0")
+            self.plant(root, "36.1.0-rc1")
+            chosen = verify_support.choose_build_tools(root)
+            self.assertEqual(chosen.name, "36.1.0")
+
+    def test_explicit_version_beats_a_newer_install(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.plant(root, "34.0.0")
+            self.plant(root, "36.1.0")
+            chosen = verify_support.choose_build_tools(root, explicit="34.0.0")
+            self.assertEqual(chosen.name, "34.0.0")
+
+    def test_explicit_missing_version_does_not_fall_back(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.plant(root, "36.1.0")
+            self.assertIsNone(verify_support.choose_build_tools(root, explicit="34.0.0"))
+            found = verify_support.locate_release_tools(sdk_root=str(root), build_tools="34.0.0")
+            self.assertIsNone(found.build_tools)
+            self.assertIn("does not fall back", found.sdk_detail)
+            self.assertNotIn("java is not", found.sdk_detail)
+
+    def test_incomplete_newer_directory_loses_to_a_complete_older_one(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.plant(root, "36.1.0", tools=("zipalign",))
+            self.plant(root, "34.0.0")
+            chosen = verify_support.choose_build_tools(root)
+            self.assertEqual(chosen.name, "34.0.0")
+
+    def test_no_tools_and_missing_java_are_separate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            sdk = Path(temp) / "sdk"
+            sdk.mkdir()
+            jdk = Path(temp) / "jdk"
+            found = verify_support.locate_release_tools(jdk_root=str(jdk), sdk_root=str(sdk))
+            self.assertIsNone(found.java)
+            self.assertIsNone(found.build_tools)
+            self.assertIn("java is not on this machine", found.java_detail)
+            self.assertNotIn("apksigner", found.java_detail)
+            self.assertIn("no build-tools directory", found.sdk_detail)
+            self.assertNotIn("java", found.sdk_detail)
+
+    def test_android_home_finds_36_without_a_34_directory(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.plant(root, "36.1.0")
+            os.environ["ANDROID_HOME"] = str(root)
+            found = verify_support.locate_release_tools()
+            self.assertEqual(found.build_tools.name, "36.1.0")
+            self.assertTrue(found.apksigner_jar.is_file())
+            self.assertTrue(found.zipalign.is_file())
+            self.assertTrue(found.aapt.is_file())
+
 
 class PublishedPackages(unittest.TestCase):
     def test_dev_check_does_not_claim_a_finished_release(self):
@@ -231,7 +358,8 @@ class PublishedPackages(unittest.TestCase):
         self.assertIn("EXIT: FAIL", game.stdout)
         self.assertIn("HistoryJourney", game.stdout)
         self.assertIn("history_road.png", game.stdout)
-        self.assertIn("mode=strict", game.stdout)
+        self.assertTrue(verify_support.summary_is_known_gap_only(game.stdout), game.stdout)
+        self.assertNotIn("java or apksigner", game.stdout)
         studio = subprocess.run(
             ["python3", "tools/verify-studio-release.py", "--strict"],
             cwd=ROOT,
@@ -242,7 +370,8 @@ class PublishedPackages(unittest.TestCase):
         self.assertNotEqual(studio.returncode, 0)
         self.assertIn("EXIT: FAIL", studio.stdout)
         self.assertIn("editor.page", studio.stdout)
-        self.assertIn("SKIP", studio.stdout)
+        self.assertTrue(verify_support.summary_is_known_gap_only(studio.stdout), studio.stdout)
+        self.assertNotIn("java/zipalign/aapt/apksigner not all present", studio.stdout)
 
 
 class ScriptsRun(unittest.TestCase):

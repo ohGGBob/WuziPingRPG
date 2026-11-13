@@ -16,10 +16,9 @@ from verify_support import (
     ROOT,
     bytes_match,
     checksum_map,
+    locate_release_tools,
     read_gradle_version,
     render_gate,
-    resolve_java,
-    resolve_sdk_tool,
     sha256_file,
 )
 
@@ -121,8 +120,12 @@ def finish(strict: bool) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--jdk-root", default=None, help="JDK root. Defaults to JAVA_HOME, then java on PATH.")
+    parser.add_argument("--sdk-root", default=None, help="Android SDK root. Defaults to ANDROID_HOME, then ANDROID_SDK_ROOT.")
+    parser.add_argument("--build-tools", default=None, help="Build-tools version. Defaults to ANDROID_BUILD_TOOLS, else the highest complete install.")
     parser.add_argument("--strict", action="store_true", help="Release gate: missing SDK tools and known resource gaps exit non-zero.")
     args = parser.parse_args(argv)
+    tools = locate_release_tools(jdk_root=args.jdk_root, sdk_root=args.sdk_root, build_tools=args.build_tools)
     try:
         version = read_gradle_version(ROOT / "studio" / "build.gradle")
         record("gradle version", "PASS", f"{version.version_name} versionCode {version.version_code}")
@@ -195,17 +198,20 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as error:
         record("apk contents", "FAIL", f"{type(error).__name__}: {error}")
 
-    java = resolve_java()
-    zipalign = resolve_sdk_tool(None, "zipalign")
-    aapt = resolve_sdk_tool(None, "aapt")
-    apksigner_dir = resolve_sdk_tool(None, "apksigner")
-    signer_jar = apksigner_dir.parent / "lib" / "apksigner.jar" if apksigner_dir else None
-    if java and signer_jar and signer_jar.is_file() and zipalign and aapt:
+    if tools.java:
+        record("java", "PASS", str(tools.java))
+    else:
+        record("java", "SKIP", tools.java_detail)
+    if tools.build_tools:
+        record("build-tools", "PASS", str(tools.build_tools))
+    else:
+        record("build-tools", "SKIP", tools.sdk_detail)
+    if tools.java and tools.build_tools:
         import subprocess
         try:
-            subprocess.run([str(zipalign), "-c", "4", str(path)], check=True)
+            subprocess.run([str(tools.zipalign), "-c", "4", str(path)], check=True)
             signature = subprocess.check_output(
-                [str(java), "-jar", str(signer_jar), "verify", "--verbose", "--print-certs", str(path)],
+                [str(tools.java), "-jar", str(tools.apksigner_jar), "verify", "--verbose", "--print-certs", str(path)],
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -213,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
             if "Verified using v2 scheme (APK Signature Scheme v2): true" not in signature:
                 raise AssertionError("v2 signature was not verified")
             meta = subprocess.check_output(
-                [str(aapt), "dump", "badging", str(path)],
+                [str(tools.aapt), "dump", "badging", str(path)],
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -224,11 +230,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             if expected not in meta:
                 raise AssertionError(f"badging missing {expected}")
-            record("sdk tools", "PASS", expected)
+            record("sdk checks", "PASS", f"{tools.build_tools.name}; {expected}")
         except Exception as error:
-            record("sdk tools", "FAIL", f"{type(error).__name__}: {error}")
-    else:
-        record("sdk tools", "SKIP", "java/zipalign/aapt/apksigner not all present; checksum and zip checks still ran")
+            record("sdk checks", "FAIL", f"{type(error).__name__}: {error}")
 
     print_table()
     return finish(args.strict)

@@ -55,8 +55,120 @@ def java_bin(jdk_root: Path, platform: str | None = None) -> Path:
     return Path(jdk_root) / "bin" / executable_name("java", platform)
 
 
-def sdk_bin(sdk_root: Path, tool: str, build_tools: str = "34.0.0", platform: str | None = None) -> Path:
+def sdk_bin(sdk_root: Path, tool: str, build_tools: str, platform: str | None = None) -> Path:
     return Path(sdk_root) / "build-tools" / build_tools / executable_name(tool, platform)
+
+
+def version_sort_key(name: str) -> tuple:
+    """Release versions sort above prereleases. 36.1.0 > 34.0.0 > 34.0.0-rc1."""
+    match = re.match(r"^(\d+(?:\.\d+)*)(.*)$", name)
+    if not match:
+        return ((0,), 0, name)
+    numbers = tuple(int(part) for part in match.group(1).split("."))
+    suffix = match.group(2)
+    return (numbers, 1 if suffix == "" else 0, name)
+
+
+def release_tool_paths(directory: Path, platform: str | None = None) -> dict[str, Path]:
+    return {
+        "zipalign": directory / executable_name("zipalign", platform),
+        "aapt": directory / executable_name("aapt", platform),
+        "apksigner.jar": directory / "lib" / "apksigner.jar",
+    }
+
+
+def missing_release_tools(directory: Path, platform: str | None = None) -> list[str]:
+    return [name for name, path in release_tool_paths(directory, platform).items() if not path.is_file()]
+
+
+def choose_build_tools(sdk_root: Path, explicit: str | None = None, platform: str | None = None) -> Path | None:
+    """Pick one build-tools directory.
+
+    An explicit version is used only when that directory contains zipalign, aapt,
+    and lib/apksigner.jar. It does not fall back to a different installed version.
+    Without an explicit version, the highest release that has all three wins.
+    """
+    root = Path(sdk_root)
+    if explicit:
+        candidate = root / "build-tools" / explicit
+        if missing_release_tools(candidate, platform):
+            return None
+        return candidate
+    base = root / "build-tools"
+    if not base.is_dir():
+        return None
+    complete = [
+        path for path in base.iterdir()
+        if path.is_dir() and not missing_release_tools(path, platform)
+    ]
+    if not complete:
+        return None
+    return max(complete, key=lambda path: version_sort_key(path.name))
+
+
+def sdk_search_roots(explicit: str | None = None) -> list[Path]:
+    if explicit:
+        return [Path(explicit)]
+    roots: list[Path] = []
+    for key in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        value = os.environ.get(key)
+        if not value:
+            continue
+        path = Path(value)
+        if path not in roots:
+            roots.append(path)
+    return roots
+
+
+@dataclass(frozen=True)
+class ReleaseTools:
+    java: Path | None
+    build_tools: Path | None
+    zipalign: Path | None
+    aapt: Path | None
+    apksigner_jar: Path | None
+    java_detail: str
+    sdk_detail: str
+
+
+def locate_release_tools(
+    jdk_root: str | None = None,
+    sdk_root: str | None = None,
+    build_tools: str | None = None,
+    platform: str | None = None,
+) -> ReleaseTools:
+    java = resolve_java(jdk_root)
+    java_detail = "" if java else "java is not on this machine; set JAVA_HOME or pass --jdk-root"
+    explicit = build_tools if build_tools else (os.environ.get("ANDROID_BUILD_TOOLS") or "").strip() or None
+    roots = sdk_search_roots(sdk_root)
+    chosen: Path | None = None
+    if not roots:
+        sdk_detail = "Android SDK root is not set; pass --sdk-root or set ANDROID_HOME"
+    else:
+        reasons: list[str] = []
+        for root in roots:
+            chosen = choose_build_tools(root, explicit, platform)
+            if chosen:
+                break
+            if explicit:
+                missing = missing_release_tools(root / "build-tools" / explicit, platform)
+                listed = ", ".join(missing) if missing else "directory is absent"
+                reasons.append(
+                    f"{root}: build-tools/{explicit} is not complete ({listed}); explicit version does not fall back"
+                )
+            else:
+                reasons.append(f"{root}: no build-tools directory contains zipalign, aapt, and lib/apksigner.jar")
+        sdk_detail = "" if chosen else " ".join(reasons)
+    paths = release_tool_paths(chosen, platform) if chosen else {}
+    return ReleaseTools(
+        java=java,
+        build_tools=chosen,
+        zipalign=paths.get("zipalign"),
+        aapt=paths.get("aapt"),
+        apksigner_jar=paths.get("apksigner.jar"),
+        java_detail=java_detail,
+        sdk_detail=sdk_detail,
+    )
 
 
 def existing_file(path: Path | None) -> Path | None:
@@ -80,19 +192,18 @@ def resolve_java(jdk_root: str | None = None) -> Path | None:
     return Path(located) if located else None
 
 
-def resolve_sdk_tool(sdk_root: str | None, tool: str) -> Path | None:
-    roots: list[str] = []
-    if sdk_root:
-        roots.append(sdk_root)
-    for key in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
-        value = os.environ.get(key)
-        if value and value not in roots:
-            roots.append(value)
-    for root in roots:
-        found = existing_file(sdk_bin(Path(root), tool))
-        if found:
-            return found
-    return None
+def resolve_sdk_tool(sdk_root: str | None, tool: str, build_tools: str | None = None, platform: str | None = None) -> Path | None:
+    """Backward-compatible lookup. Prefer locate_release_tools for release checks."""
+    found = locate_release_tools(sdk_root=sdk_root, build_tools=build_tools, platform=platform)
+    if tool == "apksigner":
+        return found.apksigner_jar
+    if tool == "zipalign":
+        return found.zipalign
+    if tool == "aapt":
+        return found.aapt
+    if found.build_tools is None:
+        return None
+    return existing_file(found.build_tools / executable_name(tool, platform))
 
 
 def checksum_name(raw: str) -> str:
@@ -234,6 +345,29 @@ def render_gate(results: list[tuple[str, str, str]], strict: bool = False) -> tu
         lines.append("本次列出的检查全部通过。")
     lines.append(f"EXIT: {verdict}")
     return code, "\n".join(lines) + "\n"
+
+
+def is_known_gap_only(results: list[tuple[str, str, str]]) -> bool:
+    """Strict failure caused only by SKIP and/or KNOWN, with no FAIL row.
+
+    A checksum mismatch or other FAIL must not count as the expected published-gap result.
+    """
+    code, verdict, counts = gate_verdict(results, strict=True)
+    return code == 1 and verdict == "FAIL" and counts["FAIL"] == 0 and counts["KNOWN"] > 0
+
+
+def summary_is_known_gap_only(text: str) -> bool:
+    matched = False
+    exited = False
+    for line in text.splitlines():
+        if re.match(
+            r"SUMMARY: mode=strict PASS=\d+ FAIL=0 SKIP=\d+ KNOWN=[1-9]\d* NOTE=\d+$",
+            line,
+        ):
+            matched = True
+        if line == "EXIT: FAIL":
+            exited = True
+    return matched and exited
 
 
 def read_suite_names(path: Path) -> list[str]:
