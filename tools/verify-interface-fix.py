@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 import re
@@ -12,8 +13,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-
-from verify_support import bytes_match, read_gradle_version
+from verify_support import bytes_match, read_gradle_version, render_gate
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "studio" / "web"
@@ -223,11 +223,12 @@ def print_table() -> None:
     print(f"{'-' * name_width}  {'-' * 6}  {'-' * 48}")
     for name, status, detail in results:
         print(f"{name.ljust(name_width)}  {status:6}  {detail}")
-    counts = {key: sum(1 for _, status, _ in results if status == key) for key in ("PASS", "FAIL", "SKIP")}
-    print(f"\nSUMMARY: PASS={counts['PASS']} FAIL={counts['FAIL']} SKIP={counts['SKIP']}")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--strict", action="store_true", help="Release gate: a skipped bundle or APK check exits non-zero.")
+    args = parser.parse_args(argv)
     record("index ai.css link", check_index_link)
     record("asset ai.css hash", check_asset_hash)
     record("build ai.css copy", check_copy_manifest)
@@ -242,9 +243,9 @@ def main() -> int:
     record("APK app.js", check_apk_bundle)
 
     print_table()
-    failed = any(status == "FAIL" for _, status, _ in results)
-    print(f"EXIT: {'FAIL' if failed else 'PASS'}")
-    return 1 if failed else 0
+    code, text = render_gate(results, args.strict)
+    print(text, end="")
+    return code
 
 
 if __name__ == "__main__":

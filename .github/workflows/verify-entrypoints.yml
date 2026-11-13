@@ -18,17 +18,42 @@ jobs:
           cache-dependency-path: studio/web/package-lock.json
       - name: Python 校验入口
         run: python3 tools/test_verify_support.py
-      - name: 当前版本安装包核对（不签名、不重新打包）
+      - name: 开发检查（有缺口时不得写成发行 PASS）
         run: |
-          python3 tools/verify-release.py
-          python3 tools/verify-studio-release.py
+          set -o pipefail
+          python3 tools/verify-release.py | tee /tmp/game-dev.txt
+          python3 tools/verify-studio-release.py | tee /tmp/studio-dev.txt
+          grep -q 'EXIT: INCOMPLETE' /tmp/game-dev.txt
+          grep -q 'EXIT: INCOMPLETE' /tmp/studio-dev.txt
+          if grep -q '^EXIT: PASS$' /tmp/game-dev.txt || grep -q '^EXIT: PASS$' /tmp/studio-dev.txt; then
+            echo '开发检查把未完成的发行写成了 PASS'
+            exit 1
+          fi
+      - name: 严格发行门槛目前应当失败
+        run: |
+          set +e
+          python3 tools/verify-release.py --strict > /tmp/game-strict.txt
+          game=$?
+          python3 tools/verify-studio-release.py --strict > /tmp/studio-strict.txt
+          studio=$?
+          set -e
+          test "$game" -ne 0
+          test "$studio" -ne 0
+          grep -q '^EXIT: FAIL$' /tmp/game-strict.txt
+          grep -q '^EXIT: FAIL$' /tmp/studio-strict.txt
+          grep -q 'HistoryJourney' /tmp/game-strict.txt
+          grep -q 'history_road.png' /tmp/game-strict.txt
+          grep -q 'editor.page' /tmp/studio-strict.txt
+          echo '严格门槛按预期失败，这不代表发行包已经完整'
       - name: 首页卡片静态检查
         run: node tools/test-merged-ui.js
       - name: 安装天工网页依赖
         working-directory: studio/web
         run: npm ci
       - name: 接口修复校验（含临时构建）
-        run: python3 tools/verify-interface-fix.py
+        run: |
+          python3 tools/verify-interface-fix.py
+          python3 tools/verify-interface-fix.py --strict
       - name: 天工网页测试
         working-directory: studio/web
         run: npm test

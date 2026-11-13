@@ -192,6 +192,50 @@ def merge_checksum_file(checksum_path: Path, names: list[str]) -> None:
     checksum_path.write_text(merge_checksum_text(existing, updates), encoding="utf-8")
 
 
+STATUSES = ("PASS", "FAIL", "SKIP", "KNOWN", "NOTE")
+
+
+def gate_verdict(results: list[tuple[str, str, str]], strict: bool = False) -> tuple[int, str, dict[str, int]]:
+    """Decide how a verification run ends.
+
+    Dev mode exits 0 unless a row is FAIL. SKIP and KNOWN stay visible, and the
+    verdict is INCOMPLETE so the log cannot be read as a finished release.
+    Strict mode exits non-zero when any required tool was skipped or a known
+    resource gap is still recorded. NOTE is informational and blocks neither mode.
+    """
+    counts = {status: 0 for status in STATUSES}
+    for _, status, _ in results:
+        if status not in counts:
+            raise ValueError(f"unknown status {status!r}")
+        counts[status] += 1
+    if counts["FAIL"] or (strict and (counts["SKIP"] or counts["KNOWN"])):
+        return 1, "FAIL", counts
+    if counts["SKIP"] or counts["KNOWN"]:
+        return 0, "INCOMPLETE", counts
+    return 0, "PASS", counts
+
+
+def render_gate(results: list[tuple[str, str, str]], strict: bool = False) -> tuple[int, str]:
+    code, verdict, counts = gate_verdict(results, strict)
+    mode = "strict" if strict else "dev"
+    lines = [
+        (
+            f"SUMMARY: mode={mode} PASS={counts['PASS']} FAIL={counts['FAIL']} "
+            f"SKIP={counts['SKIP']} KNOWN={counts['KNOWN']} NOTE={counts['NOTE']}"
+        )
+    ]
+    if verdict == "INCOMPLETE":
+        lines.append("开发检查结束。仍有 SKIP 或 KNOWN。完整发行请再跑同一脚本的 --strict；缺口还在时该命令会失败。")
+    elif verdict == "FAIL" and strict:
+        lines.append("严格发行门槛未通过。")
+    elif verdict == "FAIL":
+        lines.append("开发检查未通过。")
+    else:
+        lines.append("本次列出的检查全部通过。")
+    lines.append(f"EXIT: {verdict}")
+    return code, "\n".join(lines) + "\n"
+
+
 def read_suite_names(path: Path) -> list[str]:
     names: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():

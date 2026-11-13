@@ -7,6 +7,7 @@ or sign an APK.
 """
 from __future__ import annotations
 
+import argparse
 import sys
 import zipfile
 from pathlib import Path
@@ -16,6 +17,7 @@ from verify_support import (
     bytes_match,
     checksum_map,
     read_gradle_version,
+    render_gate,
     resolve_java,
     resolve_sdk_tool,
     sha256_file,
@@ -109,21 +111,25 @@ def print_table() -> None:
     print(f"{'CHECK'.ljust(width)}  {'STATUS':6}  DETAIL")
     for name, status, detail in RESULTS:
         print(f"{name.ljust(width)}  {status:6}  {detail}")
-    counts = {key: sum(status == key for _, status, _ in RESULTS) for key in ("PASS", "FAIL", "SKIP", "KNOWN")}
-    print(
-        f"\nSUMMARY: PASS={counts['PASS']} FAIL={counts['FAIL']} "
-        f"SKIP={counts['SKIP']} KNOWN={counts['KNOWN']}"
-    )
 
 
-def main() -> int:
+def finish(strict: bool) -> int:
+    code, text = render_gate(RESULTS, strict)
+    print(text, end="")
+    return code
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--strict", action="store_true", help="Release gate: missing SDK tools and known resource gaps exit non-zero.")
+    args = parser.parse_args(argv)
     try:
         version = read_gradle_version(ROOT / "studio" / "build.gradle")
         record("gradle version", "PASS", f"{version.version_name} versionCode {version.version_code}")
     except Exception as error:
         record("gradle version", "FAIL", str(error))
         print_table()
-        return 1
+        return finish(args.strict)
 
     try:
         check_workspace_pages(version.version_name)
@@ -135,7 +141,7 @@ def main() -> int:
     if not path.is_file():
         record(apk_name, "FAIL", "current gradle version has no dist APK")
         print_table()
-        return 1
+        return finish(args.strict)
     digest = sha256_file(path)
     check_checksum_file(ROOT / "dist" / "STUDIO-SHA256SUMS.txt", apk_name, digest)
     check_checksum_file(ROOT / "STUDIO-SHA256SUMS.txt", apk_name, digest)
@@ -143,7 +149,7 @@ def main() -> int:
     if parallel.is_file():
         record("parallel apk", "PASS", parallel.name)
     else:
-        record("parallel apk", "KNOWN", f"{parallel.name} is not in dist; only the standard package is published")
+        record("parallel apk", "NOTE", f"{parallel.name} is not in dist; the current studio release set is the standard package only")
 
     try:
         with zipfile.ZipFile(path) as archive:
@@ -225,9 +231,7 @@ def main() -> int:
         record("sdk tools", "SKIP", "java/zipalign/aapt/apksigner not all present; checksum and zip checks still ran")
 
     print_table()
-    failed = any(status == "FAIL" for _, status, _ in RESULTS)
-    print(f"EXIT: {'FAIL' if failed else 'PASS'}")
-    return 1 if failed else 0
+    return finish(args.strict)
 
 
 if __name__ == "__main__":

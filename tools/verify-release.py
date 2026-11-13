@@ -19,6 +19,7 @@ from verify_support import (
     bytes_match,
     checksum_map,
     read_gradle_version,
+    render_gate,
     resolve_java,
     resolve_sdk_tool,
     sha256_file,
@@ -132,18 +133,20 @@ def print_table() -> None:
     print(f"{'CHECK'.ljust(width)}  {'STATUS':6}  DETAIL")
     for name, status, detail in RESULTS:
         print(f"{name.ljust(width)}  {status:6}  {detail}")
-    counts = {key: sum(status == key for _, status, _ in RESULTS) for key in ("PASS", "FAIL", "SKIP", "KNOWN")}
-    print(
-        f"\nSUMMARY: PASS={counts['PASS']} FAIL={counts['FAIL']} "
-        f"SKIP={counts['SKIP']} KNOWN={counts['KNOWN']}"
-    )
     print("Logic suites are not counted here. Run tools/verify-desktop.sh for the live Java checks.")
+
+
+def finish(strict: bool) -> int:
+    code, text = render_gate(RESULTS, strict)
+    print(text, end="")
+    return code
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jdk-root", default=None, help="JDK root. Defaults to JAVA_HOME, then java on PATH.")
     parser.add_argument("--sdk-root", default=None, help="Android SDK root. Defaults to ANDROID_HOME or ANDROID_SDK_ROOT.")
+    parser.add_argument("--strict", action="store_true", help="Release gate: missing SDK tools and known resource gaps exit non-zero.")
     args = parser.parse_args(argv)
     if args.jdk_root:
         import os
@@ -158,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as error:
         record("gradle version", "FAIL", str(error))
         print_table()
-        return 1
+        return finish(args.strict)
 
     checksums = checksum_map(ROOT / "dist" / "SHA256SUMS.txt")
     dexes: list[bytes] = []
@@ -219,9 +222,7 @@ def main(argv: list[str] | None = None) -> int:
             record("dex identity", "FAIL", "debug and parallel-debug classes.dex differ")
 
     print_table()
-    failed = any(status == "FAIL" for _, status, _ in RESULTS)
-    print(f"EXIT: {'FAIL' if failed else 'PASS'}")
-    return 1 if failed else 0
+    return finish(args.strict)
 
 
 if __name__ == "__main__":

@@ -151,6 +151,100 @@ class Entrypoints(unittest.TestCase):
             self.assertEqual(game_sums.get(game_name), verify_support.sha256_file(ROOT / "dist" / game_name))
 
 
+class Gate(unittest.TestCase):
+    def test_success_path_passes_in_both_modes(self):
+        rows = [("checksum", "PASS", "ok"), ("assets", "PASS", "ok")]
+        for strict in (False, True):
+            code, verdict, _counts = verify_support.gate_verdict(rows, strict)
+            self.assertEqual((code, verdict), (0, "PASS"))
+            text = verify_support.render_gate(rows, strict)[1]
+            self.assertIn("EXIT: PASS", text)
+            self.assertNotIn("EXIT: INCOMPLETE", text)
+
+    def test_dev_mode_keeps_gaps_visible_without_claiming_release(self):
+        rows = [
+            ("checksum", "PASS", "ok"),
+            ("badging", "SKIP", "aapt is not on this machine"),
+            ("history class", "KNOWN", "published dex has no HistoryJourney"),
+            ("parallel apk", "NOTE", "standard package only"),
+        ]
+        code, verdict, counts = verify_support.gate_verdict(rows, strict=False)
+        self.assertEqual(code, 0)
+        self.assertEqual(verdict, "INCOMPLETE")
+        self.assertEqual(counts["NOTE"], 1)
+        text = verify_support.render_gate(rows, strict=False)[1]
+        self.assertIn("EXIT: INCOMPLETE", text)
+        self.assertNotIn("EXIT: PASS", text)
+
+    def test_strict_mode_fails_on_missing_tools_and_known_gaps(self):
+        for status, detail in (
+            ("SKIP", "zipalign is not on this machine"),
+            ("KNOWN", "source files not in this published APK: history_road.png"),
+        ):
+            rows = [("checksum", "PASS", "ok"), ("gap", status, detail)]
+            code, verdict, _counts = verify_support.gate_verdict(rows, strict=True)
+            self.assertEqual((code, verdict), (1, "FAIL"), status)
+            text = verify_support.render_gate(rows, strict=True)[1]
+            self.assertIn("EXIT: FAIL", text)
+            self.assertNotIn("EXIT: PASS", text)
+            self.assertIn(detail, "\n".join(item[2] for item in rows))
+
+    def test_strict_mode_ignores_informational_notes(self):
+        rows = [("apk", "PASS", "ok"), ("parallel apk", "NOTE", "not published")]
+        code, verdict, _counts = verify_support.gate_verdict(rows, strict=True)
+        self.assertEqual((code, verdict), (0, "PASS"))
+
+    def test_a_real_byte_drift_is_not_accepted_as_newline(self):
+        self.assertIsNone(verify_support.bytes_match(b"history-art-v1", b"history-art-v2"))
+        self.assertEqual(verify_support.bytes_match(b"a\r\nb", b"a\nb"), "newline")
+
+    def test_hard_failure_blocks_dev_mode(self):
+        rows = [("checksum", "FAIL", "hash mismatch")]
+        code, verdict, _counts = verify_support.gate_verdict(rows, strict=False)
+        self.assertEqual((code, verdict), (1, "FAIL"))
+
+
+class PublishedPackages(unittest.TestCase):
+    def test_dev_check_does_not_claim_a_finished_release(self):
+        for script in ("tools/verify-release.py", "tools/verify-studio-release.py"):
+            completed = subprocess.run(
+                ["python3", script],
+                cwd=ROOT,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIn("EXIT: INCOMPLETE", completed.stdout)
+            self.assertNotIn("EXIT: PASS", completed.stdout)
+            self.assertIn("mode=dev", completed.stdout)
+
+    def test_strict_gate_fails_on_the_published_gaps(self):
+        game = subprocess.run(
+            ["python3", "tools/verify-release.py", "--strict"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(game.returncode, 0)
+        self.assertIn("EXIT: FAIL", game.stdout)
+        self.assertIn("HistoryJourney", game.stdout)
+        self.assertIn("history_road.png", game.stdout)
+        self.assertIn("mode=strict", game.stdout)
+        studio = subprocess.run(
+            ["python3", "tools/verify-studio-release.py", "--strict"],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(studio.returncode, 0)
+        self.assertIn("EXIT: FAIL", studio.stdout)
+        self.assertIn("editor.page", studio.stdout)
+        self.assertIn("SKIP", studio.stdout)
+
+
 class ScriptsRun(unittest.TestCase):
     def test_merged_ui_static_check(self):
         completed = subprocess.run(
