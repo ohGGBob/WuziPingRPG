@@ -9,7 +9,12 @@ $VersionName = $Matches[1]
 if (-not $SdkRoot) { $SdkRoot = 'D:\AndroidTools\android-sdk' }
 if (-not $JdkRoot) { $JdkRoot = 'C:\Program Files\Microsoft\jdk-17.0.20.101-hotspot' }
 $platformJar = Join-Path $SdkRoot 'platforms\android-34\android.jar'
-$buildTools = Join-Path $SdkRoot 'build-tools\34.0.0'
+$pythonCmd = (Get-Command python -ErrorAction SilentlyContinue)
+if (-not $pythonCmd) { $pythonCmd = Get-Command python3 -ErrorAction Stop }
+& $pythonCmd.Source (Join-Path $projectRoot 'tools\package_preflight.py') --root $projectRoot --inputs-only
+if ($LASTEXITCODE -ne 0) { throw 'Package preflight failed' }
+$buildTools = (& $pythonCmd.Source (Join-Path $projectRoot 'tools\verify_support.py') --sdk-root $SdkRoot --print-build-tools --for-build).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $buildTools) { throw 'Cannot select a complete build-tools directory' }
 $javac = Join-Path $JdkRoot 'bin\javac.exe'
 $java = Join-Path $JdkRoot 'bin\java.exe'
 $jar = Join-Path $JdkRoot 'bin\jar.exe'

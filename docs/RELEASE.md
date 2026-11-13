@@ -70,6 +70,16 @@ CI 工作流 `.github/workflows/verify-entrypoints.yml` 跑开发检查，并另
 
 x86 或 x86_64 模拟器若没有 ARM 翻译，扫描相关的原生库加载不了。Gradle 注释写了：要在 x86 模拟器上试扫描，得临时去掉那段排除再重新构建。这条核对不负责重新构建。WebView 里的其他页面是否能打开，以实际模拟器结果为准。
 
+## 下一次打包前
+
+`python3 tools/package_preflight.py` 不编译、不签名、不写 APK。默认模式确认游戏和天工的编译目录里有 `HistoryJourney`，`app/src/main/assets` 里有五张被源码字面量引用的 `history_*.png`，并且三份页面副本与 `studio/web/src/index.html` 一致。扫描范围只包括这五张图，以及游戏编译目录里引号括起来的 `.png`、`.wav`、`.webp` 文件名。`"audio/" + name + ".wav"` 这种拼接路径不在范围内。
+
+准备和校验是两步。`--inputs-only` 只查类和这些字面量资源；页面还不一致时会打印 `page drift before preparation`，但不因此失败。`--prepare-pages` 把 `studio/web/src/index.html` 复制到打包用的三份页面，并打印每一份事先存在的差异。复制之后再跑默认模式，不一致仍然失败。`build-studio.sh` 的顺序是：`--inputs-only`，然后 `npm run build`，然后 `--prepare-pages`，然后默认校验，最后才 javac。游戏脚本只跑 `--inputs-only`，避免旧的 `editor.page` 挡住游戏打包。Gradle 的 `:app:preBuild` 依赖 `:app:packagePreflight`（`--inputs-only`）。`:studio:packagePreflight` 先依赖 `syncStudioPages`（`--prepare-pages`），`:studio:preBuild` 再依赖它。预检不依赖 `preBuild`，避免和资源合并、编译绕成环。
+
+只读核验要求 `zipalign`、`aapt`、`lib/apksigner.jar`。打包还要 `aapt2` 和 `lib/d8.jar`。没有显式版本时，核验选满足只读要求的最高版本；`tools/verify_support.py --print-build-tools --for-build` 选同时具备打包工具的最高版本。因此只有只读工具的 36 不会盖过完整的 34。显式 `--build-tools` 仍然不回退。
+
+已提交的 `dist/WuziPing-Emberbound-0.7.1-debug.apk` 最后一次入库是 2026-11-06（`5129812`）。`HistoryJourney.java` 与五张图是 2026-11-10 之后才进入源码（`eeeb6fa`、`3605a80`）。当前打包脚本按目录收集 `core` 与 `app` 的 Java，并用 aapt 的 `-A app/src/main/assets` 收资源，所以这份缺口不是现在的源码没被扫描到，而是安装包比这些文件更旧。预检通过只说明下一次批准的打包看得到它们，不表示现有 APK 已经包含它们。`--strict` 在重打之前仍应失败。
+
 ## 已提交包里的已知缺口
 
 这些缺口是对照现有 APK 读出来的，不是把检查放宽之后的结论。
@@ -77,4 +87,4 @@ x86 或 x86_64 模拟器若没有 ARM 翻译，扫描相关的原生库加载不
 - 游戏 `dist/WuziPing-Emberbound-0.7.1-debug.apk` 与共存包的 `classes.dex` 没有 `HistoryJourney`。源码和 `tools/tests/HistoryTests.java` 里有这个类。
 - 同一对游戏包没有这五张图：`history_bandit.png`、`history_commander.png`、`history_ford.png`、`history_road.png`、`history_soldier.png`。它们在 `app/src/main/assets/`。包内已有的资源与源码一致；缺口是源码多出来的文件。
 - 天工 `dist/Ember-Studio-0.3.18.apk` 的 `assets/studio/editor.page` 仍是旧页。`PackedAssets` 读取页面时先打开 `assets/studio/index.html`，那份与当前源码一致。回退页要等下一次打包才会更新。
-- 没有选定完整 build-tools 时，`build-tools` 单独记为 SKIP，不把 Java 写成缺失。工具齐全时这一行是 PASS，`--strict` 仍会因为上面的 KNOWN 失败。打包脚本 `tools/build-apk.sh` 和 `tools/build-studio.sh` 仍使用 Build-Tools 34.0.0 来产出新包；只读核验不下载 SDK，也不固定 34.0.0。
+- 没有选定完整 build-tools 时，`build-tools` 单独记为 SKIP，不把 Java 写成缺失。工具齐全时这一行是 PASS，`--strict` 仍会因为上面的 KNOWN 失败。只读核验不下载 SDK。打包用的 build-tools 由 `--for-build` 按 `aapt2` 和 `lib/d8.jar` 另选，不固定 34.0.0。

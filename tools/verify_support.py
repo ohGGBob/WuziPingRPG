@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -69,29 +70,50 @@ def version_sort_key(name: str) -> tuple:
     return (numbers, 1 if suffix == "" else 0, name)
 
 
+VERIFY_TOOLS = ("zipalign", "aapt", "apksigner.jar")
+BUILD_TOOLS = ("zipalign", "aapt", "aapt2", "apksigner.jar", "d8.jar")
+
+
 def release_tool_paths(directory: Path, platform: str | None = None) -> dict[str, Path]:
     return {
         "zipalign": directory / executable_name("zipalign", platform),
         "aapt": directory / executable_name("aapt", platform),
+        "aapt2": directory / executable_name("aapt2", platform),
         "apksigner.jar": directory / "lib" / "apksigner.jar",
+        "d8.jar": directory / "lib" / "d8.jar",
     }
 
 
-def missing_release_tools(directory: Path, platform: str | None = None) -> list[str]:
-    return [name for name, path in release_tool_paths(directory, platform).items() if not path.is_file()]
+def required_tool_names(profile: str = "verify") -> tuple[str, ...]:
+    if profile == "verify":
+        return VERIFY_TOOLS
+    if profile == "build":
+        return BUILD_TOOLS
+    raise ValueError(f"unknown build-tools profile {profile!r}")
 
 
-def choose_build_tools(sdk_root: Path, explicit: str | None = None, platform: str | None = None) -> Path | None:
+def missing_release_tools(directory: Path, platform: str | None = None, profile: str = "verify") -> list[str]:
+    paths = release_tool_paths(directory, platform)
+    return [name for name in required_tool_names(profile) if not paths[name].is_file()]
+
+
+def choose_build_tools(
+    sdk_root: Path,
+    explicit: str | None = None,
+    platform: str | None = None,
+    profile: str = "verify",
+) -> Path | None:
     """Pick one build-tools directory.
 
-    An explicit version is used only when that directory contains zipalign, aapt,
-    and lib/apksigner.jar. It does not fall back to a different installed version.
-    Without an explicit version, the highest release that has all three wins.
+    ``verify`` needs zipalign, aapt, and lib/apksigner.jar. ``build`` also needs
+    aapt2 and lib/d8.jar. An explicit version is used only when it satisfies
+    that profile. It does not fall back to another install. Otherwise the
+    highest release that satisfies the profile wins.
     """
     root = Path(sdk_root)
     if explicit:
         candidate = root / "build-tools" / explicit
-        if missing_release_tools(candidate, platform):
+        if missing_release_tools(candidate, platform, profile):
             return None
         return candidate
     base = root / "build-tools"
@@ -99,7 +121,7 @@ def choose_build_tools(sdk_root: Path, explicit: str | None = None, platform: st
         return None
     complete = [
         path for path in base.iterdir()
-        if path.is_dir() and not missing_release_tools(path, platform)
+        if path.is_dir() and not missing_release_tools(path, platform, profile)
     ]
     if not complete:
         return None
@@ -136,6 +158,7 @@ def locate_release_tools(
     sdk_root: str | None = None,
     build_tools: str | None = None,
     platform: str | None = None,
+    profile: str = "verify",
 ) -> ReleaseTools:
     java = resolve_java(jdk_root)
     java_detail = "" if java else "java is not on this machine; set JAVA_HOME or pass --jdk-root"
@@ -147,17 +170,18 @@ def locate_release_tools(
     else:
         reasons: list[str] = []
         for root in roots:
-            chosen = choose_build_tools(root, explicit, platform)
+            chosen = choose_build_tools(root, explicit, platform, profile)
             if chosen:
                 break
+            needed = ", ".join(required_tool_names(profile))
             if explicit:
-                missing = missing_release_tools(root / "build-tools" / explicit, platform)
+                missing = missing_release_tools(root / "build-tools" / explicit, platform, profile)
                 listed = ", ".join(missing) if missing else "directory is absent"
                 reasons.append(
                     f"{root}: build-tools/{explicit} is not complete ({listed}); explicit version does not fall back"
                 )
             else:
-                reasons.append(f"{root}: no build-tools directory contains zipalign, aapt, and lib/apksigner.jar")
+                reasons.append(f"{root}: no build-tools directory contains {needed}")
         sdk_detail = "" if chosen else " ".join(reasons)
     paths = release_tool_paths(chosen, platform) if chosen else {}
     return ReleaseTools(
@@ -389,8 +413,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gradle", type=Path, help="Gradle file to read")
     parser.add_argument("--shell", action="store_true", help="Print VERSION_CODE and VERSION_NAME shell assignments")
     parser.add_argument("--merge-checksums", type=Path, help="Checksum file to update in place")
+    parser.add_argument("--sdk-root", type=Path, help="Android SDK root for --print-build-tools")
+    parser.add_argument("--build-tools", help="Exact build-tools version. Does not fall back.")
+    parser.add_argument("--print-build-tools", action="store_true", help="Print the selected build-tools directory")
+    parser.add_argument("--for-build", action="store_true", help="With --print-build-tools, also require aapt2 and lib/d8.jar")
     parser.add_argument("names", nargs="*", help="APK file names next to the checksum file")
     args = parser.parse_args(argv)
+    if args.print_build_tools:
+        found = locate_release_tools(
+            sdk_root=str(args.sdk_root) if args.sdk_root else None,
+            build_tools=args.build_tools,
+            profile="build" if args.for_build else "verify",
+        )
+        if found.build_tools is None:
+            print(found.sdk_detail or "build-tools not found", file=sys.stderr)
+            return 1
+        print(found.build_tools)
     if args.gradle:
         version = read_gradle_version(args.gradle)
         if args.shell:
@@ -399,8 +437,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{version.version_code} {version.version_name}")
     if args.merge_checksums:
         merge_checksum_file(args.merge_checksums, list(args.names))
-    if not args.gradle and not args.merge_checksums:
-        parser.error("pass --gradle and/or --merge-checksums")
+    if not args.gradle and not args.merge_checksums and not args.print_build_tools:
+        parser.error("pass --gradle, --merge-checksums, and/or --print-build-tools")
     return 0
 
 

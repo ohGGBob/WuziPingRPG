@@ -17,7 +17,10 @@ jobs:
           cache: npm
           cache-dependency-path: studio/web/package-lock.json
       - name: Python 校验入口
-        run: python3 tools/test_verify_support.py
+        run: |
+          python3 tools/test_verify_support.py
+          python3 tools/test_package_preflight.py
+          python3 tools/package_preflight.py
       - name: 开发检查（有缺口时不得写成发行 PASS）
         run: |
           set -o pipefail
