@@ -40,7 +40,8 @@ fi
 if [[ -z "$SDK_ROOT" ]]; then echo "Set SDK_ROOT, ANDROID_HOME or ANDROID_SDK_ROOT" >&2; exit 1; fi
 
 PLATFORM="$SDK_ROOT/platforms/android-34/android.jar"
-BT="$SDK_ROOT/build-tools/34.0.0"
+python3 "$ROOT/tools/package_preflight.py" --root "$ROOT"
+BT="$(python3 "$ROOT/tools/verify_support.py" --sdk-root "$SDK_ROOT" --print-build-tools)"
 for required in "$PLATFORM" "$JDK_ROOT/bin/javac" "$JDK_ROOT/bin/jar" "$JDK_ROOT/bin/java" "$BT/aapt2" "$BT/aapt" "$BT/zipalign" "$BT/lib/d8.jar" "$BT/lib/apksigner.jar"; do
   if [[ ! -e "$required" ]]; then echo "Missing build dependency: $required" >&2; exit 1; fi
 done

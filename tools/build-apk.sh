@@ -12,7 +12,8 @@ if [[ -z "$SDK_ROOT" ]]; then echo "Set SDK_ROOT or ANDROID_HOME" >&2; exit 1; f
 if ! command -v python3 >/dev/null 2>&1; then echo "python3 is required to read app/build.gradle" >&2; exit 1; fi
 eval "$(python3 "$ROOT/tools/verify_support.py" --gradle "$ROOT/app/build.gradle" --shell)"
 PLATFORM="$SDK_ROOT/platforms/android-34/android.jar"
-BUILD_TOOLS="$SDK_ROOT/build-tools/34.0.0"
+python3 "$ROOT/tools/package_preflight.py" --root "$ROOT"
+BUILD_TOOLS="$(python3 "$ROOT/tools/verify_support.py" --sdk-root "$SDK_ROOT" --print-build-tools)"
 for required in "$PLATFORM" "$JDK_ROOT/bin/javac" "$BUILD_TOOLS/aapt2"; do
   if [[ ! -e "$required" ]]; then echo "Missing build dependency: $required" >&2; exit 1; fi
 done

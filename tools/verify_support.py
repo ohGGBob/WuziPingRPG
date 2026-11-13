@@ -389,8 +389,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--gradle", type=Path, help="Gradle file to read")
     parser.add_argument("--shell", action="store_true", help="Print VERSION_CODE and VERSION_NAME shell assignments")
     parser.add_argument("--merge-checksums", type=Path, help="Checksum file to update in place")
+    parser.add_argument("--sdk-root", type=Path, help="Android SDK root for --print-build-tools")
+    parser.add_argument("--build-tools", help="Exact build-tools version. Does not fall back.")
+    parser.add_argument("--print-build-tools", action="store_true", help="Print the selected build-tools directory")
     parser.add_argument("names", nargs="*", help="APK file names next to the checksum file")
     args = parser.parse_args(argv)
+    if args.print_build_tools:
+        found = locate_release_tools(
+            sdk_root=str(args.sdk_root) if args.sdk_root else None,
+            build_tools=args.build_tools,
+        )
+        if found.build_tools is None:
+            print(found.sdk_detail or "build-tools not found", file=sys.stderr)
+            return 1
+        print(found.build_tools)
     if args.gradle:
         version = read_gradle_version(args.gradle)
         if args.shell:
@@ -399,8 +411,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{version.version_code} {version.version_name}")
     if args.merge_checksums:
         merge_checksum_file(args.merge_checksums, list(args.names))
-    if not args.gradle and not args.merge_checksums:
-        parser.error("pass --gradle and/or --merge-checksums")
+    if not args.gradle and not args.merge_checksums and not args.print_build_tools:
+        parser.error("pass --gradle, --merge-checksums, and/or --print-build-tools")
     return 0
 
 

@@ -11,7 +11,12 @@ $work=Join-Path $root 'build/studio'
 $classes=Join-Path $work 'classes'
 $dex=Join-Path $work 'dex'
 $dist=Join-Path $root 'dist'
-$bt=Join-Path $SdkRoot 'build-tools/34.0.0'
+$pythonCmd=(Get-Command python -ErrorAction SilentlyContinue)
+if(-not $pythonCmd){$pythonCmd=Get-Command python3 -ErrorAction Stop}
+& $pythonCmd.Source (Join-Path $root 'tools/package_preflight.py') --root $root
+if($LASTEXITCODE -ne 0){throw 'Package preflight failed'}
+$bt=((& $pythonCmd.Source (Join-Path $root 'tools/verify_support.py') --sdk-root $SdkRoot --print-build-tools) | Out-String).Trim()
+if($LASTEXITCODE -ne 0 -or -not $bt){throw 'Cannot select a complete build-tools directory'}
 $java=Join-Path $JdkRoot 'bin/java.exe'
 $platform=Join-Path $SdkRoot 'platforms/android-34/android.jar'
 function Checked([string]$Exe,[string[]]$Arguments){& $Exe @Arguments;if($LASTEXITCODE -ne 0){throw "Failed: $Exe ($LASTEXITCODE)"}}

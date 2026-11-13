@@ -70,6 +70,12 @@ CI 工作流 `.github/workflows/verify-entrypoints.yml` 跑开发检查，并另
 
 x86 或 x86_64 模拟器若没有 ARM 翻译，扫描相关的原生库加载不了。Gradle 注释写了：要在 x86 模拟器上试扫描，得临时去掉那段排除再重新构建。这条核对不负责重新构建。WebView 里的其他页面是否能打开，以实际模拟器结果为准。
 
+## 下一次打包前
+
+`python3 tools/package_preflight.py` 不编译、不签名、不写 APK。它确认游戏和天工的编译目录里有 `HistoryJourney`，`app/src/main/assets` 里有五张 `history_*.png`，并且三份页面副本与 `studio/web/src/index.html` 一致。`tools/build-apk.sh`、`tools/build-studio.sh` 和对应的 ps1 在真正调用 javac 之前会先跑它。Build-tools 与只读核验相同：显式版本优先，否则用 SDK 里最高的一套完整工具，不再写死 34.0.0。
+
+已提交的 `dist/WuziPing-Emberbound-0.7.1-debug.apk` 最后一次入库是 2026-11-06（`5129812`）。`HistoryJourney.java` 与五张图是 2026-11-10 之后才进入源码（`eeeb6fa`、`3605a80`）。当前打包脚本按目录收集 `core` 与 `app` 的 Java，并用 aapt 的 `-A app/src/main/assets` 收资源，所以这份缺口不是现在的源码没被扫描到，而是安装包比这些文件更旧。预检通过只说明下一次批准的打包看得到它们，不表示现有 APK 已经包含它们。`--strict` 在重打之前仍应失败。
+
 ## 已提交包里的已知缺口
 
 这些缺口是对照现有 APK 读出来的，不是把检查放宽之后的结论。
