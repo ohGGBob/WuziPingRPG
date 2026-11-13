@@ -5,6 +5,10 @@
 # That file is gitignored. It must be the original development key or an
 # already-installed copy will refuse the upgrade.
 set -euo pipefail
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required for package preflight and build-tools selection" >&2
+  exit 1
+fi
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SDK_ROOT="${SDK_ROOT:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}}"
 JDK_ROOT="${JDK_ROOT:-${JAVA_HOME:-}}"
@@ -40,8 +44,8 @@ fi
 if [[ -z "$SDK_ROOT" ]]; then echo "Set SDK_ROOT, ANDROID_HOME or ANDROID_SDK_ROOT" >&2; exit 1; fi
 
 PLATFORM="$SDK_ROOT/platforms/android-34/android.jar"
-python3 "$ROOT/tools/package_preflight.py" --root "$ROOT"
-BT="$(python3 "$ROOT/tools/verify_support.py" --sdk-root "$SDK_ROOT" --print-build-tools)"
+python3 "$ROOT/tools/package_preflight.py" --root "$ROOT" --inputs-only
+BT="$(python3 "$ROOT/tools/verify_support.py" --sdk-root "$SDK_ROOT" --print-build-tools --for-build)"
 for required in "$PLATFORM" "$JDK_ROOT/bin/javac" "$JDK_ROOT/bin/jar" "$JDK_ROOT/bin/java" "$BT/aapt2" "$BT/aapt" "$BT/zipalign" "$BT/lib/d8.jar" "$BT/lib/apksigner.jar"; do
   if [[ ! -e "$required" ]]; then echo "Missing build dependency: $required" >&2; exit 1; fi
 done
@@ -64,6 +68,8 @@ for name in pyodide.js pyodide.asm.js pyodide.asm.wasm python_stdlib.zip pyodide
 done
 
 cp -f "$ROOT/artifacts/screenshots-v0.7/08-town.png" "$ROOT/studio/src/main/assets/studio-game.png"
+python3 "$ROOT/tools/package_preflight.py" --root "$ROOT" --prepare-pages
+python3 "$ROOT/tools/package_preflight.py" --root "$ROOT"
 
 SOURCES=()
 while IFS= read -r -d '' file; do SOURCES+=("$file"); done < <(find "$ROOT/core/src/main/java" "$ROOT/app/src/main/java" "$ROOT/studio/src/main/java" -name '*.java' -print0)
@@ -89,10 +95,6 @@ text = text.replace("<manifest ", '<manifest package="%s" ' % app_id, 1)
 text = text.replace('${studioLabel}', '天工 · 试玩' if parallel == "1" else '天工')
 pathlib.Path(dest).write_text(text, encoding="utf-8", newline="\n")
 PY
-
-PAGE="$ROOT/studio/src/main/assets/studio/index.html"
-cp -f "$PAGE" "$ROOT/studio/src/main/assets/studio/editor.page"
-cp -f "$PAGE" "$ROOT/studio/src/main/assets/editor.page"
 
 UNSIGNED="$WORK/unsigned.apk"
 "$BT/aapt2" link -o "$UNSIGNED" --manifest "$WORK/AndroidManifest.xml" -I "$PLATFORM" \

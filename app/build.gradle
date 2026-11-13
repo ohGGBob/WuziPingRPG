@@ -13,3 +13,16 @@ android {
     compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
     buildTypes { release { minifyEnabled false } }
 }
+
+def repoRoot = rootProject.projectDir
+tasks.register('packagePreflight', Exec) {
+    group = 'verification'
+    description = 'Validate game package inputs. Does not assemble an APK.'
+    workingDir repoRoot
+    commandLine 'python3', "${repoRoot}/tools/package_preflight.py", '--root', repoRoot, '--inputs-only'
+}
+afterEvaluate {
+    tasks.matching { it.name == 'preBuild' }.configureEach {
+        dependsOn 'packagePreflight'
+    }
+}

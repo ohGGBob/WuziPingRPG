@@ -74,6 +74,55 @@ class PreflightFixtures(unittest.TestCase):
             problems, _notes = package_preflight.preflight(root)
         self.assertTrue(any("history_road.png" in item for item in problems), problems)
 
+    def test_inputs_only_reports_stale_pages_then_prepare_makes_validation_pass(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base_tree(root)
+            write(root / "studio/src/main/assets/studio/editor.page", "<span class=\"brandver\">0.3.5</span>\n")
+            input_problems, input_notes = package_preflight.preflight(root, require_pages=False)
+            self.assertEqual(input_problems, [])
+            self.assertTrue(any("editor.page" in note for note in input_notes))
+            problems, changes = package_preflight.prepare_pages(root)
+            self.assertEqual(problems, [])
+            self.assertTrue(any("editor.page" in line and "differed" in line for line in changes))
+            after, _notes = package_preflight.preflight(root, require_pages=True)
+            self.assertEqual(after, [])
+
+    def test_prepare_pages_does_not_hide_a_missing_asset(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            base_tree(root)
+            (root / "app/src/main/assets/history_bandit.png").unlink()
+            problems, _changes = package_preflight.prepare_pages(root)
+            self.assertEqual(problems, [])
+            still, _notes = package_preflight.preflight(root, require_pages=False)
+            self.assertTrue(any("history_bandit.png" in item for item in still))
+
+    def test_gradle_tasks_prepare_then_validate_without_a_cycle(self):
+        app = (ROOT / "app/build.gradle").read_text(encoding="utf-8")
+        studio = (ROOT / "studio/build.gradle").read_text(encoding="utf-8")
+        self.assertIn("--inputs-only", app)
+        self.assertNotIn("syncStudioPages", app)
+        self.assertIn("dependsOn 'packagePreflight'", app)
+        app_preflight = app.split("tasks.register('packagePreflight'")[1].split("afterEvaluate")[0]
+        self.assertNotIn("preBuild", app_preflight)
+        self.assertIn("--prepare-pages", studio)
+        self.assertIn("dependsOn 'syncStudioPages'", studio)
+        self.assertIn("dependsOn 'packagePreflight'", studio)
+        sync = studio.split("tasks.register('syncStudioPages'")[1].split("tasks.register('packagePreflight'")[0]
+        preflight = studio.split("tasks.register('packagePreflight'")[1].split("afterEvaluate")[0]
+        self.assertNotIn("preBuild", sync)
+        self.assertNotIn("packagePreflight", sync)
+        self.assertNotIn("preBuild", preflight)
+        command = [line for line in preflight.splitlines() if "commandLine" in line][0]
+        self.assertNotIn("assemble", command)
+        self.assertNotIn("d8", command)
+        shell = (ROOT / "tools/build-studio.sh").read_text(encoding="utf-8")
+        self.assertLess(shell.index("if ! command -v python3"), shell.index('python3 "$ROOT'))
+        self.assertLess(shell.index("--inputs-only"), shell.index("npm run build"))
+        self.assertLess(shell.index("npm run build"), shell.index("--prepare-pages"))
+        self.assertLess(shell.index("--prepare-pages"), shell.index('package_preflight.py" --root "$ROOT"\n'))
+
     def test_stale_editor_page_fails(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

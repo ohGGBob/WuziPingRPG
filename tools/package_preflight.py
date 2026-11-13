@@ -4,8 +4,13 @@ This does not compile, dex, align, sign, or write an APK. The published 0.7.1
 game packages predate HistoryJourney and the five history_*.png files; those
 sources are already inside the directories the packagers scan. The check fails
 if a later class or asset would be referenced by packaged code but left outside
-those directories, or if the Studio page copies Gradle packages have drifted
-apart from index.html.
+those directories.
+
+Page copies are a separate step. ``--inputs-only`` checks classes and the
+literal asset names below, and only reports page drift. ``--prepare-pages``
+copies studio/web/src/index.html onto the packaged copies and prints each file
+that differed. The default mode then requires those copies to match. It does
+not scan paths built by string concatenation, such as ``"audio/" + name + ".wav"``.
 """
 from __future__ import annotations
 
@@ -115,23 +120,48 @@ def normalized_text(path: Path) -> str:
     return path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
 
 
-def studio_page_problems(root: Path) -> list[str]:
-    index = root / "studio" / "web" / "src" / "index.html"
-    copies = [
+def studio_page_paths(root: Path) -> list[Path]:
+    return [
         root / "studio" / "src" / "main" / "assets" / "studio" / "index.html",
         root / "studio" / "src" / "main" / "assets" / "studio" / "editor.page",
         root / "studio" / "src" / "main" / "assets" / "editor.page",
     ]
+
+
+def studio_page_problems(root: Path) -> list[str]:
+    index = root / "studio" / "web" / "src" / "index.html"
     if not index.is_file():
         return [f"missing {index}"]
     source = normalized_text(index)
     problems = []
-    for path in copies:
+    for path in studio_page_paths(root):
         if not path.is_file():
             problems.append(f"missing {path.relative_to(root)}")
         elif normalized_text(path) != source:
             problems.append(f"{path.relative_to(root)} differs from studio/web/src/index.html")
     return problems
+
+
+def prepare_pages(root: Path) -> tuple[list[str], list[str]]:
+    """Copy the authored index onto packaged page files.
+
+    Returns (problems, changes). A previous difference is printed by the caller;
+    it is not left in place, and it is not omitted from the output.
+    """
+    index = root / "studio" / "web" / "src" / "index.html"
+    if not index.is_file():
+        return [f"missing {index}"], []
+    data = index.read_bytes()
+    changes = []
+    for path in studio_page_paths(root):
+        before = path.read_bytes() if path.is_file() else None
+        if before == data:
+            continue
+        state = "was missing" if before is None else "differed"
+        changes.append(f"{path.relative_to(root)} {state}; updated from studio/web/src/index.html")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    return [], changes
 
 
 def compatibility_notes(root: Path) -> list[str]:
@@ -145,8 +175,8 @@ def compatibility_notes(root: Path) -> list[str]:
     return notes
 
 
-def preflight(root: Path) -> tuple[list[str], list[str]]:
-    """Return (problems, notes). Problems are build-input gaps."""
+def preflight(root: Path, require_pages: bool = True) -> tuple[list[str], list[str]]:
+    """Return (problems, notes). Page drift fails only when require_pages is set."""
     root = root.resolve()
     problems: list[str] = []
     game_roots = game_java_roots(root)
@@ -169,18 +199,37 @@ def preflight(root: Path) -> tuple[list[str], list[str]]:
             problems.append(f"{name} is no longer referenced by the game sources that the packager compiles")
         elif not (asset_root / name).is_file():
             problems.append(f"{name} is referenced but missing from app/src/main/assets")
-    problems.extend(studio_page_problems(root))
+    page_drift = studio_page_problems(root)
     notes = []
+    if require_pages:
+        problems.extend(page_drift)
+    else:
+        notes.extend(f"page drift before preparation: {item}" for item in page_drift)
     if (root / "app" / "build.gradle").is_file() and (root / "studio" / "build.gradle").is_file():
-        notes = compatibility_notes(root)
+        notes.extend(compatibility_notes(root))
     return problems, notes
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--inputs-only", action="store_true", help="Check classes and literal assets. Report page drift without failing.")
+    mode.add_argument("--prepare-pages", action="store_true", help="Copy index.html onto packaged pages and print any previous difference.")
     args = parser.parse_args(argv)
-    problems, notes = preflight(args.root)
+    if args.prepare_pages:
+        problems, changes = prepare_pages(args.root)
+        for line in changes:
+            print(f"PREPARE {line}")
+        if not changes and not problems:
+            print("PREPARE pages already matched studio/web/src/index.html")
+        if problems:
+            print("PACKAGE PREFLIGHT FAIL")
+            for item in problems:
+                print(f"- {item}")
+            return 1
+        return 0
+    problems, notes = preflight(args.root, require_pages=not args.inputs_only)
     game_classes = classes_under(game_java_roots(args.root))
     assets = referenced_assets(game_java_roots(args.root))
     print(f"game classes: {len(game_classes)}")

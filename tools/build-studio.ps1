@@ -13,15 +13,19 @@ $dex=Join-Path $work 'dex'
 $dist=Join-Path $root 'dist'
 $pythonCmd=(Get-Command python -ErrorAction SilentlyContinue)
 if(-not $pythonCmd){$pythonCmd=Get-Command python3 -ErrorAction Stop}
-& $pythonCmd.Source (Join-Path $root 'tools/package_preflight.py') --root $root
+& $pythonCmd.Source (Join-Path $root 'tools/package_preflight.py') --root $root --inputs-only
 if($LASTEXITCODE -ne 0){throw 'Package preflight failed'}
-$bt=((& $pythonCmd.Source (Join-Path $root 'tools/verify_support.py') --sdk-root $SdkRoot --print-build-tools) | Out-String).Trim()
+$bt=((& $pythonCmd.Source (Join-Path $root 'tools/verify_support.py') --sdk-root $SdkRoot --print-build-tools --for-build) | Out-String).Trim()
 if($LASTEXITCODE -ne 0 -or -not $bt){throw 'Cannot select a complete build-tools directory'}
 $java=Join-Path $JdkRoot 'bin/java.exe'
 $platform=Join-Path $SdkRoot 'platforms/android-34/android.jar'
 function Checked([string]$Exe,[string[]]$Arguments){& $Exe @Arguments;if($LASTEXITCODE -ne 0){throw "Failed: $Exe ($LASTEXITCODE)"}}
 New-Item -ItemType Directory -Force -Path $classes,$dex,$dist,$work | Out-Null
 if(-not $SkipWebBuild){Push-Location (Join-Path $root 'studio/web');try{Checked 'npm.cmd' @('run','build')}finally{Pop-Location}}
+& $pythonCmd.Source (Join-Path $root 'tools/package_preflight.py') --root $root --prepare-pages
+if($LASTEXITCODE -ne 0){throw 'Studio page preparation failed'}
+& $pythonCmd.Source (Join-Path $root 'tools/package_preflight.py') --root $root
+if($LASTEXITCODE -ne 0){throw 'Package preflight failed after page preparation'}
 foreach($name in @('pyodide.js','pyodide.asm.js','pyodide.asm.wasm','python_stdlib.zip','pyodide-lock.json')){if(-not (Test-Path -LiteralPath (Join-Path $root "studio/src/main/assets/studio/runtime/$name"))){throw "Missing offline Python asset: $name. Run tools/fetch-python-runtime.ps1 first."}}
 Copy-Item -LiteralPath (Join-Path $root 'artifacts/screenshots-v0.7/08-town.png') -Destination (Join-Path $root 'studio/src/main/assets/studio-game.png')
 $sources=@((Get-ChildItem -LiteralPath (Join-Path $root 'core/src/main/java'),(Join-Path $root 'app/src/main/java'),(Join-Path $root 'studio/src/main/java') -Filter '*.java' -Recurse).FullName)
@@ -38,9 +42,6 @@ $text=$text.Replace('${studioLabel}',$label)
 $manifest=Join-Path $work 'AndroidManifest.xml'
 [IO.File]::WriteAllText($manifest,$text,[Text.UTF8Encoding]::new($false))
 $unsigned=Join-Path $work 'unsigned.apk'
-$page=Join-Path $root 'studio/src/main/assets/studio/index.html'
-Copy-Item -LiteralPath $page -Destination (Join-Path $root 'studio/src/main/assets/studio/editor.page') -Force
-Copy-Item -LiteralPath $page -Destination (Join-Path $root 'studio/src/main/assets/editor.page') -Force
 Checked (Join-Path $bt 'aapt2.exe') @('link','-o',$unsigned,'--manifest',$manifest,'-I',$platform,'-A',(Join-Path $root 'app/src/main/assets'),'-A',(Join-Path $root 'studio/src/main/assets'),'-0','wav','-0','wasm','-0','zip','-0','js','-0','mjs','-0','html','-0','css','-0','page','-0','gz','--min-sdk-version','23','--target-sdk-version','34','--version-code',$VersionCode,'--version-name',$VersionName,$resources)
 Checked (Join-Path $JdkRoot 'bin/jar.exe') @('uf',$unsigned,'-C',$dex,'classes.dex')
 # aapt2 on Windows writes nested assets as assets/studio\style.css; Android reads

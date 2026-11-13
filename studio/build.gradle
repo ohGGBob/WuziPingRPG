@@ -34,3 +34,29 @@ dependencies {
     // 扫描相机模块（minSdk 29）。Android 10 以下设备上首页会把「扫描」标成不可用。
     implementation project(':scan')
 }
+
+def repoRoot = rootProject.projectDir
+tasks.register('syncStudioPages', Exec) {
+    group = 'verification'
+    description = 'Copy studio/web/src/index.html onto packaged page copies and print any previous difference.'
+    workingDir repoRoot
+    commandLine 'python3', "${repoRoot}/tools/package_preflight.py", '--root', repoRoot, '--prepare-pages'
+    inputs.file("${repoRoot}/studio/web/src/index.html")
+    outputs.files(
+        "${repoRoot}/studio/src/main/assets/studio/index.html",
+        "${repoRoot}/studio/src/main/assets/studio/editor.page",
+        "${repoRoot}/studio/src/main/assets/editor.page"
+    )
+}
+tasks.register('packagePreflight', Exec) {
+    group = 'verification'
+    description = 'Validate package inputs after page preparation. Does not assemble an APK.'
+    workingDir repoRoot
+    commandLine 'python3', "${repoRoot}/tools/package_preflight.py", '--root', repoRoot
+    dependsOn 'syncStudioPages'
+}
+afterEvaluate {
+    tasks.matching { it.name == 'preBuild' }.configureEach {
+        dependsOn 'packagePreflight'
+    }
+}
