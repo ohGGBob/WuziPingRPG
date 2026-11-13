@@ -1,0 +1,28 @@
+name: Verify entry points
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  entrypoints:
+    name: 校验入口 · 工作室网页测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Python 校验入口
+        run: python3 tools/test_verify_support.py
+      - name: 当前版本安装包核对（不签名、不重新打包）
+        run: |
+          python3 tools/verify-release.py
+          python3 tools/verify-studio-release.py
+          python3 tools/verify-interface-fix.py
+      - name: 首页卡片静态检查
+        run: node tools/test-merged-ui.js
+      - name: 天工网页测试
+        working-directory: studio/web
+        run: npm test

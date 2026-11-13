@@ -15,7 +15,8 @@ SOURCES=()
 while IFS= read -r -d '' file; do SOURCES+=("$file"); done < <(find "$ROOT/core/src/main/java" "$ROOT/tools/tests" "$ROOT/studio/tests" -name '*.java' -print0)
 SOURCES+=("$ROOT/studio/src/main/java/cn/wuziping/studio/TextFiles.java" "$ROOT/studio/src/main/java/cn/wuziping/studio/AssetServer.java" "$ROOT/studio/src/main/java/cn/wuziping/studio/PhoneActionPlan.java")
 "$JDK_ROOT/bin/javac" -encoding UTF-8 --release 8 -d "$CLASSES" "${SOURCES[@]}"
-for name in GameTests StoryTests BodyTests GuestTests ExpansionTests MathTests PhysicsTests; do
+while IFS= read -r name || [[ -n "${name:-}" ]]; do
+  case "$name" in ''|\#*) continue ;; esac
   "$JDK_ROOT/bin/java" -cp "$CLASSES" "cn.wuziping.ember.tests.$name"
-done
+done < "$ROOT/tools/java-suites-studio.txt"
 "$JDK_ROOT/bin/java" -cp "$CLASSES" cn.wuziping.studio.tests.StudioFilesTests

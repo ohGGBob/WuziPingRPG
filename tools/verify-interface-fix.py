@@ -13,14 +13,20 @@ import zipfile
 from pathlib import Path
 
 
+from verify_support import bytes_match, read_gradle_version
+
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "studio" / "web"
+PHOTO = ROOT / "photo"
 ASSETS = ROOT / "studio" / "src" / "main" / "assets" / "studio"
 EDITOR_ACTIVITY = ROOT / "studio" / "src" / "main" / "java" / "cn" / "wuziping" / "studio" / "EditorActivity.java"
 INDEX = WEB / "src" / "index.html"
 BUILD_SCRIPT = WEB / "build.mjs"
+PHOTO_BUILD_SCRIPT = WEB / "build-photo.mjs"
 WORKSPACE_BUNDLE = ASSETS / "app.js"
-APK = ROOT / "dist" / "Ember-Studio-0.1.15.apk"
+# npm run build is `node build.mjs && node build-photo.mjs`. The photo script
+# resolves ../../photo from studio/web, so a temp tree must contain both.
+STAGED_BUILD_FILES = ("build.mjs", "build-photo.mjs", "package.json", "package-lock.json")
 
 results: list[tuple[str, str, str]] = []
 
@@ -111,6 +117,33 @@ def link_node_modules(source: Path, target: Path) -> None:
         target.symlink_to(source, target_is_directory=True)
 
 
+def current_studio_apk() -> Path:
+    version = read_gradle_version(ROOT / "studio" / "build.gradle")
+    return ROOT / "dist" / f"Ember-Studio-{version.version_name}.apk"
+
+
+def copy_web_sources(temp: Path) -> Path:
+    """Copy the files `npm run build` needs. Does not link node_modules or photo/."""
+    temp_web = temp / "studio" / "web"
+    shutil.copytree(WEB / "src", temp_web / "src")
+    for name in STAGED_BUILD_FILES:
+        source = WEB / name
+        if source.is_file():
+            shutil.copy2(source, temp_web / name)
+    if not (temp_web / "build-photo.mjs").is_file():
+        raise FileNotFoundError("temporary tree is missing build-photo.mjs")
+    (temp / "studio" / "src" / "main" / "assets" / "studio").mkdir(parents=True, exist_ok=True)
+    return temp_web
+
+
+def stage_web_tree(temp: Path) -> Path:
+    """Copy sources and link node_modules plus the photo tree build-photo.mjs imports."""
+    temp_web = copy_web_sources(temp)
+    link_node_modules(WEB / "node_modules", temp_web / "node_modules")
+    link_node_modules(PHOTO, temp / "photo")
+    return temp_web
+
+
 def check_bundle_sync():
     node = shutil.which("node")
     if not node:
@@ -119,20 +152,14 @@ def check_bundle_sync():
         return "SKIP", "studio/web/node_modules is unavailable"
     if not WORKSPACE_BUNDLE.is_file():
         return "FAIL", f"missing workspace bundle: {WORKSPACE_BUNDLE.relative_to(ROOT)}"
+    if not PHOTO_BUILD_SCRIPT.is_file():
+        return "FAIL", "studio/web/build-photo.mjs is missing"
 
     workspace_hash = sha256(WORKSPACE_BUNDLE)
     with tempfile.TemporaryDirectory(prefix="wuziping-interface-verify-") as temp_name:
         temp = Path(temp_name)
-        temp_web = temp / "studio" / "web"
+        temp_web = stage_web_tree(temp)
         temp_out = temp / "studio" / "src" / "main" / "assets" / "studio"
-        (temp_web / "src").parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(WEB / "src", temp_web / "src")
-        shutil.copy2(BUILD_SCRIPT, temp_web / "build.mjs")
-        shutil.copy2(WEB / "package.json", temp_web / "package.json")
-        if (WEB / "package-lock.json").is_file():
-            shutil.copy2(WEB / "package-lock.json", temp_web / "package-lock.json")
-        temp_out.mkdir(parents=True, exist_ok=True)
-        link_node_modules(WEB / "node_modules", temp_web / "node_modules")
 
         npm = shutil.which("npm.cmd") or shutil.which("npm")
         command = [npm, "run", "build"] if npm else [node, "build.mjs"]
@@ -160,36 +187,34 @@ def check_bundle_sync():
 
 
 def check_apk_ai_css():
-    if not APK.is_file():
-        return "SKIP", f"{APK.relative_to(ROOT)} is unavailable"
-    source_size = (WEB / "src" / "ai.css").stat().st_size
-    with zipfile.ZipFile(APK) as archive:
+    apk = current_studio_apk()
+    if not apk.is_file():
+        return "FAIL", f"{apk.relative_to(ROOT)} is not in the checkout"
+    source = (WEB / "src" / "ai.css").read_bytes()
+    with zipfile.ZipFile(apk) as archive:
         try:
-            packed = archive.getinfo("assets/studio/ai.css")
+            packed = archive.read("assets/studio/ai.css")
         except KeyError:
             return "FAIL", "assets/studio/ai.css is missing from the APK"
-        require(
-            packed.file_size == source_size,
-            f"ai.css length mismatch: packed={packed.file_size} source={source_size}",
-        )
-    return "PASS", f"assets/studio/ai.css length={source_size}"
+    kind = bytes_match(packed, source)
+    require(kind is not None, f"ai.css differs from source in {apk.name}")
+    return "PASS", f"{apk.name} ai.css matches source ({kind})"
 
 
 def check_apk_bundle():
-    if not APK.is_file():
-        return "SKIP", f"{APK.relative_to(ROOT)} is unavailable"
-    workspace_hash = sha256(WORKSPACE_BUNDLE)
-    with zipfile.ZipFile(APK) as archive:
+    apk = current_studio_apk()
+    if not apk.is_file():
+        return "FAIL", f"{apk.relative_to(ROOT)} is not in the checkout"
+    workspace = WORKSPACE_BUNDLE.read_bytes()
+    with zipfile.ZipFile(apk) as archive:
         try:
             packed = archive.read("assets/studio/app.js")
         except KeyError:
             return "FAIL", "assets/studio/app.js is missing from the APK"
-    packed_hash = hashlib.sha256(packed).hexdigest()
-    require(
-        packed_hash == workspace_hash,
-        f"bundle mismatch: apk={packed_hash} workspace={workspace_hash}",
-    )
-    return "PASS", f"sha256={workspace_hash}"
+    kind = bytes_match(packed, workspace)
+    require(kind is not None, f"app.js differs from the workspace bundle in {apk.name}")
+    digest = hashlib.sha256(packed).hexdigest()
+    return "PASS", f"{apk.name} app.js matches workspace ({kind}); sha256={digest}"
 
 
 def print_table() -> None:

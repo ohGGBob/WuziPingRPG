@@ -123,18 +123,8 @@ rm -f "$APK.idsig"
 "$BT/zipalign" -c 4 "$APK"
 "$BT/aapt" dump badging "$APK"
 
-python3 - "$DIST" "$VERSION_NAME" <<'PY'
-import hashlib, pathlib, sys
-dist, version = sys.argv[1:]
-root = pathlib.Path(dist)
-names = [f"Ember-Studio-{version}.apk", f"Ember-Studio-{version}-parallel.apk"]
-lines = []
-for name in names:
-    path = root / name
-    if path.is_file():
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()
-        lines.append(f"{digest}  {name}")
-(root / "STUDIO-SHA256SUMS.txt").write_text(("\n".join(lines) + "\n") if lines else "", encoding="utf-8")
-PY
+python3 "$ROOT/tools/verify_support.py" --merge-checksums "$DIST/STUDIO-SHA256SUMS.txt" \
+  "Ember-Studio-${VERSION_NAME}.apk" \
+  "Ember-Studio-${VERSION_NAME}-parallel.apk"
 
 echo "Studio APK ready: $APK"

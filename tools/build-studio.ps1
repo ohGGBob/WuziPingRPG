@@ -53,6 +53,5 @@ Remove-Item -LiteralPath ($apk + '.idsig') -ErrorAction SilentlyContinue
 Checked $java @('-jar',(Join-Path $bt 'lib/apksigner.jar'),'verify','--verbose','--print-certs',$apk)
 Checked (Join-Path $bt 'zipalign.exe') @('-c','4',$apk)
 Checked (Join-Path $bt 'aapt.exe') @('dump','badging',$apk)
-$sums=@((Get-ChildItem -LiteralPath $dist -Filter "Ember-Studio-$VersionName*.apk"|Sort-Object Name)|ForEach-Object{"$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"})
-[IO.File]::WriteAllText((Join-Path $dist 'STUDIO-SHA256SUMS.txt'),(($sums -join "`n")+"`n"),[Text.UTF8Encoding]::new($false))
+Checked $python @((Join-Path $root 'tools/verify_support.py'),'--merge-checksums',(Join-Path $dist 'STUDIO-SHA256SUMS.txt'),"Ember-Studio-$VersionName.apk","Ember-Studio-$VersionName-parallel.apk")
 Write-Output "Studio APK ready: $apk"

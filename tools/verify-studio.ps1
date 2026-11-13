@@ -13,6 +13,11 @@ $sources=@((Get-ChildItem -LiteralPath (Join-Path $root 'core/src/main/java'),(J
 $sources+=@((Join-Path $root 'studio/src/main/java/cn/wuziping/studio/TextFiles.java'),(Join-Path $root 'studio/src/main/java/cn/wuziping/studio/AssetServer.java'),(Join-Path $root 'studio/src/main/java/cn/wuziping/studio/PhoneActionPlan.java'))
 & (Join-Path $JdkRoot 'bin/javac.exe') -encoding UTF-8 --release 8 -d $classes @sources
 if($LASTEXITCODE -ne 0){throw 'Studio test compilation failed'}
-foreach($name in @('GameTests','StoryTests','BodyTests','GuestTests','ExpansionTests','MathTests','PhysicsTests','HistoryTests')){& (Join-Path $JdkRoot 'bin/java.exe') -cp $classes "cn.wuziping.ember.tests.$name";if($LASTEXITCODE -ne 0){throw "Game regression failed: $name"}}
+Get-Content -LiteralPath (Join-Path $PSScriptRoot 'java-suites-studio.txt') | ForEach-Object {
+  $name=$_.Trim()
+  if(-not $name -or $name.StartsWith('#')){return}
+  & (Join-Path $JdkRoot 'bin/java.exe') -cp $classes "cn.wuziping.ember.tests.$name"
+  if($LASTEXITCODE -ne 0){throw "Game regression failed: $name"}
+}
 & (Join-Path $JdkRoot 'bin/java.exe') -cp $classes cn.wuziping.studio.tests.StudioFilesTests
 if($LASTEXITCODE -ne 0){throw 'Studio file/server tests failed'}

@@ -5,7 +5,7 @@
 <canvas id="skyRipple" aria-hidden="true"></canvas>
 <div class="meteor-field" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 <header class="home-top">
- <div class="home-brand" id="homeBrand"><div><strong>天工</strong><span class="brandsub">随身学习工作台</span></div><span class="brandver">0.3.5</span></div>
+ <div class="home-brand" id="homeBrand"><div><strong>天工</strong><span class="brandsub">随身学习工作台</span></div><span class="brandver">0.3.18</span></div>
  <button id="landingBack" class="home-return" type="button" hidden>‹ 返回刚才的工作</button>
 </header>
 <div id="starStage" aria-label="星穹首页">
@@ -13,17 +13,23 @@
  <div id="starLabels"></div>
  <div class="star-hud">
   <span class="star-hint">拨转星空 · 点星打开 · 长按拖进黑洞收纳</span>
-  <span class="grow"></span>
-  <button id="starMotionBtn" type="button" aria-label="切换晃动">晃动</button>
-  <button id="starListBtn" type="button" aria-label="列表视图">列表</button>
+  <div class="star-hud-actions">
+   <button id="starMotionBtn" type="button" aria-label="切换晃动">晃动</button>
+   <button id="starListBtn" type="button" aria-label="列表视图">列表</button>
+  </div>
  </div>
- <button id="starHoleBtn" class="star-hole-chip" type="button"><span id="starHoleLabel">黑洞</span><span id="starHoleBadge" hidden>0</span></button>
+ <button id="starHoleBtn" class="star-hole-chip" type="button" aria-label="黑洞收纳"><span id="starHoleBadge" hidden>0</span></button>
 </div>
 <div class="home-scroll" id="homeScroll">
  <div class="home-hero">
   <p class="home-status"><span class="status-dot" aria-hidden="true"></span><span id="landingStatus">正在读取草稿</span><button id="homeSkyBtn" class="home-skybtn" type="button" hidden>✦ 回到星穹</button></p>
-  <h1 id="homeTitle">今天从这里开始</h1>
-  <p class="home-lead" id="homeLead">挑一件想做的事。随时按返回键回到这里，东西都留在本机。</p>
+  <h1 id="homeTitle">今天，从哪件事开始？</h1>
+  <p class="home-lead" id="homeLead">东西都留在本机，断网也能用。挑一件想做的，随时按返回键回来。</p>
+  <button id="todayStrip" class="today-strip" type="button" hidden>
+   <span class="today-when" id="todayWhen"></span>
+   <span class="today-copy"><strong id="todayName"></strong><small id="todayMeta"></small></span>
+   <span class="today-go" aria-hidden="true">›</span>
+  </button>
  </div>
  <button id="resumeCard" class="home-resume" type="button" hidden disabled>
   <span class="home-resume-icon" id="resumeIcon" aria-hidden="true">↺</span>
@@ -31,30 +37,38 @@
   <span class="home-resume-go" aria-hidden="true">›</span>
  </button>
  <section class="home-group" data-group="study" aria-label="学习">
-  <div class="home-ghead"><h2>学习</h2><span>课堂、朗读和纸质资料</span></div>
+  <div class="home-ghead"><h2>学习</h2><span>上课、背书、刷题，都在这一组</span></div>
   <div class="home-grid">
    <button class="home-card" type="button" data-mode="lecture" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">🎙</span><span class="home-tag">录音</span></span><span class="home-copy"><strong>上课</strong><small>录音、笔记、PPT 同一条时间轴</small></span></button>
    <button class="home-card" type="button" data-mode="tts" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">EN</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>英文朗读</strong><small>按句子朗读英文，可调语速</small></span></button>
    <button class="home-card" type="button" data-mode="scan" data-kind="native" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">▣</span><span class="home-tag">相机</span></span><span class="home-copy"><strong>扫描文档</strong><small>拍书页和讲义，自动裁边，导出 PDF</small></span></button>
+   <button class="home-card" type="button" data-mode="focus" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">🍅</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>专注番茄</strong><small>学一会儿歇一会儿，今天学了多久一目了然</small></span></button>
+   <button class="home-card" type="button" data-mode="cards" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">🗂</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>记忆卡片</strong><small>快忘的自动排到前面，背过的越隔越久</small></span></button>
+   <button class="home-card" type="button" data-mode="mistakes" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">📕</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>错题本</strong><small>错在哪、为什么错，记下来慢慢啃</small></span></button>
+   <button class="home-card" type="button" data-mode="habits" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">✅</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>习惯打卡</strong><small>每天打个勾，看看自己坚持了几天</small></span></button>
+   <button class="home-card" type="button" data-mode="schedule" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">📅</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>课程表</strong><small>下节课在哪上、还有几分钟，一眼看清</small></span></button>
+   <button class="home-card" type="button" data-mode="medquiz" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">🩺</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>医学生刷题</strong><small>8 科基础题，答完看解析，错题自动收</small></span></button>
   </div>
  </section>
  <section class="home-group" data-group="create" aria-label="创作">
-  <div class="home-ghead"><h2>创作</h2><span>代码、文字和照片</span></div>
+  <div class="home-ghead"><h2>创作</h2><span>写点代码、记点东西、修修图</span></div>
   <div class="home-grid">
-   <button class="home-card" type="button" data-mode="python" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">&lt;/&gt;</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>写代码</strong><small>Python、C++、网页，离线运行</small></span></button>
-   <button class="home-card" type="button" data-mode="notepad" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">✎</span><span class="home-tag">草稿</span></span><span class="home-copy"><strong>记事本</strong><small>写字、手绘，草稿自动留在本机</small></span></button>
-   <button class="home-card" type="button" data-mode="photo" data-kind="native" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">◐</span><span class="home-tag">照片</span></span><span class="home-copy"><strong>修图</strong><small>浮生图梦：调色、裁剪、拼图、水印</small></span></button>
-   <button class="home-card" type="button" data-mode="model" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">◈</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>3D 建模</strong><small>手机上捏模型，导出 OBJ / GLB</small></span></button>
+   <button class="home-card" type="button" data-mode="python" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">&lt;/&gt;</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>写代码</strong><small>Python、C++、网页，没网也能跑</small></span></button>
+   <button class="home-card" type="button" data-mode="notepad" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">✎</span><span class="home-tag">草稿</span></span><span class="home-copy"><strong>记事本</strong><small>想到什么写什么，关掉也不丢</small></span></button>
+   <button class="home-card" type="button" data-mode="photo" data-kind="native" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">◐</span><span class="home-tag">照片</span></span><span class="home-copy"><strong>修图</strong><small>调色、裁剪、拼图、加水印</small></span></button>
+   <button class="home-card" type="button" data-mode="model" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">◈</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>3D 建模</strong><small>在手机上捏模型，能导出 OBJ / GLB</small></span></button>
   </div>
  </section>
  <section class="home-group" data-group="more" aria-label="助手与休息">
   <div class="home-ghead"><h2>助手与休息</h2><span>问问题，或者玩一会儿</span></div>
   <div class="home-grid">
-   <button class="home-card" type="button" data-mode="ai" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">✧</span><span class="home-tag">联网</span></span><span class="home-copy"><strong>AI 助手</strong><small>对话和手机工具，敏感操作要你点允许</small></span></button>
-   <button class="home-card" type="button" data-mode="game" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">✦</span><span class="home-tag">游戏</span></span><span class="home-copy"><strong>星火远征</strong><small>原来的游戏存档还在</small></span></button>
+   <button class="home-card" type="button" data-mode="ai" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">✧</span><span class="home-tag">联网</span></span><span class="home-copy"><strong>AI 助手</strong><small>有事问它；要动你手机里的东西，会先问你</small></span></button>
+   <button class="home-card" type="button" data-mode="game" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">✦</span><span class="home-tag">游戏</span></span><span class="home-copy"><strong>星火远征</strong><small>之前的存档都还在，接着玩</small></span></button>
+   <button class="home-card" type="button" data-mode="pelican" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">🚲</span><span class="home-tag">3D</span></span><span class="home-copy"><strong>鹈鹕骑车</strong><small>点一下跳一下，别撞上就行</small></span></button>
+   <button class="home-card" type="button" data-mode="novel" data-kind="web" disabled><span class="home-cardtop"><span class="home-icon" aria-hidden="true">📖</span><span class="home-tag">离线</span></span><span class="home-copy"><strong>小说阅读器</strong><small>导入 TXT 自动分章，进度记得住</small></span></button>
   </div>
  </section>
- <p class="home-foot">草稿会自动存好。想把改动写回手机上的原文件，打开文件点「保存」就行。</p>
+ <p class="home-foot">东西都会自动存好。想把改动写回手机上的原文件，打开文件点「保存」就行。</p>
 </div>
 <div id="starHoleSheet" class="star-hole-sheet" hidden>
  <div class="star-hole-head"><strong>黑洞收纳</strong><button id="starHoleClose" type="button" aria-label="关闭">✕</button></div>
@@ -62,7 +76,7 @@
  <p class="star-hole-note">收进来的星星只是隐藏，随时放回或打开，不影响任何草稿。</p>
 </div>
 </section>
-<header class="appbar"><button id="homeButton" class="homeback" type="button" aria-label="回到首页" title="回到首页"><span class="homeback-chev" aria-hidden="true">‹</span><span class="homeback-label">首页</span></button><button id="filesToggle" class="icon" aria-label="文件列表" title="文件列表">☰</button><div class="doc"><strong id="activePath">main.py</strong><small id="dirtyFlag">本地草稿</small></div><button id="drawToggle" class="icon drawtoggle" aria-label="画画" title="画画" aria-pressed="false" hidden>🖌️</button><button id="saveButton" class="icon saveicon" aria-label="保存" title="保存">保存</button><button id="runButton" class="primary">▶ 运行</button><button id="stopButton" class="danger" hidden>■ 停止</button><button id="moreButton" class="icon" aria-label="更多操作" title="更多操作">⋯</button></header>
+<header class="appbar"><button id="homeButton" class="homeback" type="button" aria-label="回到首页" title="回到首页"><span class="homeback-chev" aria-hidden="true">‹</span><span class="homeback-label">首页</span></button><button id="filesToggle" class="icon" aria-label="文件列表" title="文件列表">☰</button><div class="doc"><strong id="activePath">main.py</strong><small id="dirtyFlag">本地草稿</small></div><button id="drawToggle" class="icon drawtoggle" aria-label="画画" title="画画" aria-pressed="false" hidden>🖌️</button><button id="mdToggle" class="icon mdtoggle" aria-label="Markdown 预览" title="Markdown 预览" aria-pressed="false" hidden>👁</button><button id="saveButton" class="icon saveicon" aria-label="保存" title="保存">保存</button><button id="runButton" class="primary">▶ 运行</button><button id="stopButton" class="danger" hidden>■ 停止</button><button id="moreButton" class="icon" aria-label="更多操作" title="更多操作">⋯</button></header>
 <section id="lectureBar" aria-label="上课录音控制" data-state="idle"><span class="recdot" aria-hidden="true"></span><button id="recordBtn" data-role="rec"><span id="recordLabel">🎙 开始录音</span></button><button id="pauseBtn" class="recalt" hidden>⏸ 暂停</button><button id="stopBtn" class="recstop" hidden>⏹ 停止</button><button id="newRecBtn" class="recalt" hidden>🎙 新录音</button><strong id="recordTimer">00:00</strong><label class="rec-translate" id="translateToggle"><input type="checkbox" id="translateCheck"><span class="reccheck"></span><span class="reclabel">翻译</span></label><span class="grow"></span><button id="anchorBtn" class="recanchor" hidden>📌<span class="anchorbtntext"> 标记锚点</span></button></section>
 <section id="ttsBar" aria-label="英文朗读控制" data-state="idle">
 <div class="tts-main"><span class="tts-mark" aria-hidden="true">EN</span><div class="tts-summary"><strong>英文朗读</strong><small id="ttsMeta" aria-live="off">在编辑器里输入或打开英文文本</small></div><button id="ttsPlay" class="tts-play" aria-label="开始英语朗读"><span id="ttsPlayText">朗读</span></button><button id="ttsStop" class="tts-stop" aria-label="停止英语朗读" title="停止">■</button></div>
@@ -72,6 +86,7 @@
 <section id="workbench">
 <div id="backdrop" hidden></div><aside id="explorer" aria-label="工作区文件"><div class="sheethead"><strong>文件</strong><button id="closeExplorer" class="icon" aria-label="关闭文件列表">✕</button></div><div class="fileactions"><button id="openFile">打开文件</button><button id="openFolder">导入文件夹</button></div><div id="fileList"></div><div class="explorerfoot">编辑自动保存草稿<br>“保存”写回手机原文件</div><div class="sheetfoot"><button id="newFile" class="newfile">＋ 新建文件</button></div></aside>
 <main class="workspace"><div id="editor" aria-label="代码编辑器"><div id="noteEmpty" aria-hidden="true">从这里开始写点什么…</div></div>
+<div id="mdPreview" class="md-preview" hidden aria-label="Markdown 预览"></div>
 <div id="drawLayer" hidden>
   <canvas id="drawCanvas" aria-label="画画画布"></canvas>
   <p id="drawHint">画画模式 · 手指涂写，双指捏合或滚轮缩放</p>
@@ -97,7 +112,7 @@
     <button class="draw-action" id="drawBack" title="返回文字">✎ 文字</button>
   </div>
 </div>
-<section class="console folded" id="consolePanel"><button class="consolehead" id="foldConsole" aria-expanded="false" aria-controls="consoleBody" title="展开或收起终端"><span class="ctitle">终端</span><span id="runState">就绪</span><span class="chev">⌃</span></button><div class="consolebody" id="consoleBody"><div class="consolebar"><button id="outputTab" class="active">输出</button><button id="inputTab">输入</button><span class="grow"></span><button id="saveOutput">存输出</button><button id="clearOutput">清空</button></div><pre id=”output” role=”log” aria-live=”polite”><span class=”dim”>写好代码点「运行」。Python、C++、JavaScript 都在本机跑，不联网。
+<section class="console folded" id="consolePanel"><button class="consolehead" id="foldConsole" aria-expanded="false" aria-controls="consoleBody" title="展开或收起终端"><span class="ctitle">终端</span><span id="runState">就绪</span><span class="chev">⌃</span></button><div class="consolebody" id="consoleBody"><div class="consolebar"><button id="outputTab" class="active">输出</button><button id="inputTab">输入</button><span class="grow"></span><button id="saveOutput">存输出</button><button id="clearOutput">清空</button></div><pre id="output" role="log" aria-live="polite"><span class="dim">写好代码点「运行」。Python、C++、JavaScript 都在本机跑，不联网。
 程序要读输入时，先在「输入」页填好，一行一条。</span></pre><textarea id="stdin" hidden aria-label="标准输入" placeholder="运行前填写，每个 input() 一行。未提供的输入返回 EOF。" spellcheck="false"></textarea></div></section>
 </main>
 <aside id="lectureTimeline" aria-label="时间轴与锚点"><canvas id="timelineCanvas" aria-label="录音波形时间轴"></canvas><div class="tl-controls"><button id="zoomOut" aria-label="缩小时间轴" title="缩小">－</button><button id="zoomIn" aria-label="放大时间轴" title="放大">＋</button><button id="playRate" class="tl-rate" aria-label="播放倍速" title="播放倍速">1×</button><button id="linePlay" class="tl-line" aria-label="从本行播放 10 秒" title="从本行播放 10 秒">10s</button><span id="tlRange">全程</span></div><div id="anchorList" aria-label="锚点列表"></div></aside>
@@ -188,6 +203,226 @@
  </div>
 </section>
 <dialog id="modelRenameDialog"><form method="dialog"><span class="eyebrow">3D 建模</span><h2>重命名物体</h2><label for="modelRenameInput">名称</label><input id="modelRenameInput" autocomplete="off" maxlength="30"><div class="dialogactions"><button value="cancel">取消</button><button value="ok" class="primary">确定</button></div></form></dialog>
+
+<section id="focusPanel" hidden aria-label="专注番茄">
+ <div class="focus-wrap">
+  <p class="focus-phase" id="focusPhase">专注</p>
+  <div class="focus-time" id="focusTime">25:00</div>
+  <div class="focus-dots" id="focusDots" aria-label="本轮进度"></div>
+  <div class="focus-actions">
+   <button id="focusStart" class="primary" type="button">开始</button>
+   <button id="focusReset" type="button">重置</button>
+   <button id="focusSkip" type="button">跳过</button>
+  </div>
+  <div class="focus-settings">
+   <label>专注<input id="focusWorkMin" type="number" min="1" max="90" inputmode="numeric">分</label>
+   <label>短休<input id="focusShortMin" type="number" min="1" max="30" inputmode="numeric">分</label>
+   <label>长休<input id="focusLongMin" type="number" min="1" max="60" inputmode="numeric">分</label>
+  </div>
+  <p class="focus-stats" id="focusStats">今日 0 个 · 累计 0 个</p>
+  <div class="focus-chart" id="focusChart" aria-label="最近7天专注"></div>
+ </div>
+</section>
+
+<section id="cardsPanel" hidden aria-label="记忆卡片">
+ <div class="cards-wrap">
+  <div class="cards-head">
+   <strong>记忆卡片</strong>
+   <span class="cards-stats" id="cardsStats"></span>
+  </div>
+  <div class="cards-review" id="cardsReview">
+   <button class="cards-face" id="cardsFace" type="button" aria-label="翻面">
+    <span class="cards-face-text" id="cardsFaceText">点「开始复习」</span>
+    <span class="cards-face-hint" id="cardsFaceHint"></span>
+   </button>
+   <div class="cards-rate" id="cardsRate" hidden>
+    <button type="button" data-rate="0" class="r0">忘了</button>
+    <button type="button" data-rate="1" class="r1">困难</button>
+    <button type="button" data-rate="2" class="r2">良好</button>
+    <button type="button" data-rate="3" class="r3">轻松</button>
+   </div>
+   <div class="cards-actions">
+    <button id="cardsStart" class="primary" type="button">开始复习</button>
+    <button id="cardsToggleAdd" type="button">添加卡片</button>
+    <button id="cardsToggleList" type="button">卡片列表</button>
+   </div>
+  </div>
+  <div class="cards-add" id="cardsAdd" hidden>
+   <label>正面<input id="cardsFront" type="text" maxlength="500" placeholder="问题 / 单词"></label>
+   <label>背面<textarea id="cardsBack" rows="3" maxlength="1000" placeholder="答案 / 释义"></textarea></label>
+   <div class="cards-actions"><button id="cardsSave" class="primary" type="button">保存卡片</button></div>
+  </div>
+  <div class="cards-list" id="cardsList" hidden></div>
+ </div>
+</section>
+
+<section id="mistakesPanel" hidden aria-label="错题本">
+ <div class="mist-wrap">
+  <div class="mist-head">
+   <strong>错题本</strong>
+   <span class="mist-stats" id="mistStats"></span>
+  </div>
+  <div class="mist-filters">
+   <select id="mistSubject" aria-label="按科目筛选"></select>
+   <select id="mistMastery" aria-label="按掌握度筛选">
+    <option value="-1">全部掌握度</option>
+    <option value="0">未掌握</option>
+    <option value="1">模糊</option>
+    <option value="2">已掌握</option>
+   </select>
+   <button id="mistAddBtn" class="primary" type="button">＋ 记错题</button>
+  </div>
+  <div class="mist-form" id="mistForm" hidden>
+   <input id="mistTitle" type="text" maxlength="120" placeholder="标题（如：二次函数求根）">
+   <select id="mistFormSubject" aria-label="科目"></select>
+   <textarea id="mistQuestion" rows="3" maxlength="2000" placeholder="题目 / 错在哪"></textarea>
+   <textarea id="mistAnswer" rows="3" maxlength="2000" placeholder="正确解法 / 答案"></textarea>
+   <textarea id="mistReason" rows="2" maxlength="1000" placeholder="错因（粗心 / 概念不清…）"></textarea>
+   <div class="mist-form-actions">
+    <button id="mistSave" class="primary" type="button">保存</button>
+    <button id="mistCancel" type="button">取消</button>
+   </div>
+  </div>
+  <div class="mist-list" id="mistList"></div>
+ </div>
+</section>
+
+<section id="habitsPanel" hidden aria-label="习惯打卡">
+ <div class="habit-wrap">
+  <div class="habit-head">
+   <strong>习惯打卡</strong>
+   <span class="habit-stats" id="habitStats"></span>
+  </div>
+  <div class="habit-add">
+   <input id="habitName" type="text" maxlength="40" placeholder="新习惯（如：跑步 / 背单词）">
+   <button id="habitAddBtn" class="primary" type="button">添加</button>
+  </div>
+  <div class="habit-list" id="habitList"></div>
+ </div>
+</section>
+
+<section id="schedulePanel" hidden aria-label="课程表">
+ <div class="sched-wrap">
+  <div class="sched-head">
+   <strong>课程表</strong>
+   <span class="sched-week" id="schedWeek"></span>
+   <button id="schedAddBtn" class="primary" type="button">＋ 加课</button>
+  </div>
+  <div class="sched-now" id="schedNow"></div>
+  <div class="sched-gridwrap"><div class="sched-grid" id="schedGrid"></div></div>
+  <div class="sched-form" id="schedForm" hidden>
+   <input id="schedName" type="text" maxlength="40" placeholder="课名（如：高等数学）">
+   <div class="sched-row">
+    <input id="schedPlace" type="text" maxlength="40" placeholder="教室（如：A101）">
+    <input id="schedTeacher" type="text" maxlength="20" placeholder="老师（可选）">
+   </div>
+   <div class="sched-row">
+    <select id="schedDay" aria-label="星期"></select>
+    <select id="schedStart" aria-label="开始节"></select>
+    <select id="schedLen" aria-label="连上几节"></select>
+   </div>
+   <input id="schedWeeks" type="text" placeholder="周次（如 1-16 或 1,3,5；留空=每周）">
+   <div class="sched-colors" id="schedColors"></div>
+   <div class="sched-form-actions">
+    <button id="schedSave" class="primary" type="button">保存</button>
+    <button id="schedDelete" type="button" hidden>删除</button>
+    <button id="schedCancel" type="button">取消</button>
+   </div>
+  </div>
+  <details class="sched-term">
+   <summary>学期设置</summary>
+   <label>开学第一天<input id="schedTermStart" type="date"></label>
+   <p class="sched-term-note">设了开学日，才能算出"第几周"、自动过滤单双周。</p>
+  </details>
+ </div>
+</section>
+
+<section id="novelPanel" hidden aria-label="小说阅读器">
+ <div class="novel-wrap">
+  <div class="novel-shelf" id="novelShelfView">
+   <div class="novel-head"><strong>书架</strong><button id="novelImportBtn" class="primary" type="button">＋ 导入 TXT</button></div>
+   <input id="novelFile" type="file" accept=".txt,text/plain" hidden>
+   <div class="novel-shelf-list" id="novelShelfList"></div>
+  </div>
+  <div class="novel-reader" id="novelReaderView" hidden>
+   <div class="novel-bar">
+    <button id="novelBackShelf" type="button">‹ 书架</button>
+    <span class="novel-title" id="novelTitle"></span>
+    <button id="novelTocBtn" type="button">目录</button>
+   </div>
+   <div class="novel-settings">
+    <button id="novelFontMinus" type="button" aria-label="缩小字号">A−</button>
+    <button id="novelFontPlus" type="button" aria-label="放大字号">A＋</button>
+    <button id="novelThemePaper" type="button">纸</button>
+    <button id="novelThemeGreen" type="button">护眼</button>
+    <button id="novelThemeNight" type="button">夜</button>
+   </div>
+   <div class="novel-body" id="novelBody" data-theme="paper"></div>
+   <div class="novel-nav">
+    <button id="novelPrev" type="button">上一章</button>
+    <span id="novelPos"></span>
+    <button id="novelNext" type="button">下一章</button>
+   </div>
+   <div class="novel-toc" id="novelToc" hidden></div>
+  </div>
+ </div>
+</section>
+
+<section id="medquizPanel" hidden aria-label="医学生刷题">
+ <div class="mq-wrap">
+  <div class="mq-setup" id="mqSetup">
+   <div class="mq-head"><strong>医学生刷题</strong><span class="mq-stats" id="mqStats"></span></div>
+   <p class="mq-note">基础医学自测题，供学习参考；临床请以最新教材与指南为准。</p>
+   <div class="mq-row">
+    <select id="mqSubject" aria-label="科目"></select>
+    <select id="mqMode" aria-label="模式">
+     <option value="order">顺序刷</option>
+     <option value="random">随机刷</option>
+     <option value="wrong">只刷错题</option>
+    </select>
+    <select id="mqDifficulty" aria-label="难度">
+     <option value="0">全部难度</option>
+     <option value="1">基础</option>
+     <option value="2">进阶</option>
+     <option value="3">偏难</option>
+    </select>
+   </div>
+   <button id="mqStart" class="primary" type="button">开始刷题</button>
+   <div class="mq-import">
+    <p class="mq-import-info" id="mqImportInfo"></p>
+    <div class="mq-import-actions">
+     <button id="mqImportBtn" type="button">导入题库 JSON</button>
+     <button id="mqClearCustom" type="button">清空导入</button>
+    </div>
+    <input id="mqImportFile" type="file" accept=".json,.jsonl,.txt,application/json" hidden>
+    <p class="mq-note">格式：JSON 数组或 JSONL，每条 {q, options[], answer, explain, subject, difficulty, tag}。导入自动去重，与内置题合并。</p>
+   </div>
+  </div>
+  <div class="mq-run" id="mqRun" hidden>
+   <div class="mq-runhead"><span id="mqProgress"></span><button id="mqQuit" type="button">退出</button></div>
+   <div class="mq-q" id="mqQuestion"></div>
+   <div class="mq-options" id="mqOptions"></div>
+   <div class="mq-explain" id="mqExplain" hidden></div>
+   <button id="mqNext" class="primary" type="button" hidden>下一题</button>
+  </div>
+  <div class="mq-result" id="mqResult" hidden>
+   <div class="mq-score" id="mqScore"></div>
+   <div class="mq-result-actions">
+    <button id="mqRetryWrong" class="primary" type="button">刷错题</button>
+    <button id="mqBackSetup" type="button">返回</button>
+   </div>
+  </div>
+ </div>
+</section>
+
+<section id="pelicanPanel" hidden aria-label="鹈鹕骑车">
+ <div class="pelican-stage" id="pelicanStage">
+  <canvas id="pelicanCanvas"></canvas>
+  <div class="pelican-hud"><span>得分 <b id="pelicanScore">0</b></span><span>最佳 <b id="pelicanBest">0</b></span></div>
+  <p class="pelican-msg" id="pelicanMsg">点按屏幕开始 · 跳跃躲障碍</p>
+  <button id="pelicanJumpBtn" class="pelican-jump" type="button">跳</button>
+ </div>
+</section>
 
 <section id="aiPanel" hidden aria-label="AI 助手">
 <aside class="ai-side">

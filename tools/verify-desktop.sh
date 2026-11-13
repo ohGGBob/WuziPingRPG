@@ -15,12 +15,10 @@ mapfile -d '' SOURCES < <(find "$ROOT/core/src/main/java" "$ROOT/tools/desktop" 
 "$JDK_ROOT/bin/javac" -encoding UTF-8 --release 8 -d "$CLASSES" "${SOURCES[@]}"
 (
   cd "$ROOT"
-  "$JDK_ROOT/bin/java" -cp "$CLASSES" cn.wuziping.ember.tests.GameTests
-  "$JDK_ROOT/bin/java" -cp "$CLASSES" cn.wuziping.ember.tests.StoryTests
-  "$JDK_ROOT/bin/java" -cp "$CLASSES" cn.wuziping.ember.tests.BodyTests
-  "$JDK_ROOT/bin/java" -cp "$CLASSES" cn.wuziping.ember.tests.GuestTests
-  "$JDK_ROOT/bin/java" -cp "$CLASSES" cn.wuziping.ember.tests.ExpansionTests
-  "$JDK_ROOT/bin/java" -cp "$CLASSES" cn.wuziping.ember.tests.MathTests
+  while IFS= read -r name || [[ -n "${name:-}" ]]; do
+    case "$name" in ''|\#*) continue ;; esac
+    "$JDK_ROOT/bin/java" -cp "$CLASSES" "cn.wuziping.ember.tests.$name"
+  done < "$ROOT/tools/java-suites-desktop.txt"
   "$JDK_ROOT/bin/java" -Djava.awt.headless=true -cp "$CLASSES" cn.wuziping.ember.desktop.Desktop --screenshots "$SCREENS"
   "$JDK_ROOT/bin/jar" cfe "$DIST/WuziPing-desktop-preview.jar" cn.wuziping.ember.desktop.Desktop -C "$CLASSES" . -C "$ROOT/app/src/main/assets" .
 )

@@ -56,7 +56,7 @@
 - 存档修复：格式 6、7 的读取和写入对齐。数学进度、名字和特效能按原样迁过来；格式 6 的物理工坊按未开始处理，格式 7 去掉后来新增的字段后，发射参数回到初始。
 - 记事本涂画：手指能在画布上画出笔画。画布按已经显示出来的图层量尺寸，不再把隐藏时的 0 宽度写进样式。
 
-当前源码版本：游戏 **0.7.1**，天工 **0.2.3**（versionCode 35）。历史版本说明如下：游戏 `app/build.gradle` 为 **0.7.1**（versionCode 8），当时天工 `studio/build.gradle` 为 **0.1.23**（versionCode 31）。文首的 **0.1.17**（versionCode 25）安装包已打进 `dist/`，0.1.15 的两个旧包也仍在。0.1.23 只在源码里，没有新的安装包。游戏 0.7.1 的标准包和共存包仍在 `dist/`。校验和：`dist/SHA256SUMS.txt` 是游戏 0.7.1，`dist/STUDIO-SHA256SUMS.txt` 覆盖天工 0.1.15 与 0.1.17 的四个包。`tools/package-source.py` 的目标是 `dist/WuziPingRPG-0.7.0-source.zip`，`tools/package-studio-source.py` 的目标是 `dist/Ember-Studio-0.1.15-source.zip`，这两个压缩包目前都不在仓库里。
+当前源码版本：游戏 **0.7.1**，天工 **0.3.18**（versionCode 58）。历史版本说明如下：游戏 `app/build.gradle` 为 **0.7.1**（versionCode 8），天工 `studio/build.gradle` 为 **0.3.18**（versionCode 58）。文首的 **0.1.17**（versionCode 25）安装包已打进 `dist/`，0.1.15 的两个旧包也仍在。0.1.23 只在源码里，没有新的安装包。游戏 0.7.1 的标准包和共存包仍在 `dist/`。校验和：`dist/SHA256SUMS.txt` 是游戏 0.7.1，`dist/STUDIO-SHA256SUMS.txt` 收录已提交的天工包并包含当前 **0.3.18**。仓库根目录的 `STUDIO-SHA256SUMS.txt` 也必须能核到这个当前包。`tools/package-source.py` 的目标是 `dist/WuziPingRPG-0.7.0-source.zip`，`tools/package-studio-source.py` 的目标是 `dist/Ember-Studio-0.1.15-source.zip`，这两个压缩包目前都不在仓库里。
 
 [下载游戏 v0.7.1](dist/WuziPing-Emberbound-0.7.1-debug.apk) · [下载仓库源码 ZIP](https://github.com/ohGGBob/WuziPingRPG/archive/refs/heads/main.zip)
 
@@ -240,7 +240,7 @@ Android 30 以上使用 WindowInsetsController 沉浸模式，旧版保留全屏
 
 格式 6 在数学段之后写入名字与特效，加载时物理工坊按未开始处理。格式 7 在数学段和名字之间写入物理工坊，格式 8 的加载顺序与写入一致：数学、物理、名字、特效。`readProfileExtras` 读取名字和特效。游戏回归套件用非默认的数学和物理状态、自定义主角名、特效为 1、自定义发射参数与第七件武器强化等级，检查格式 8 保存、读取、再保存后字节完全一致；格式 6 去掉物理段、格式 7 去掉新增字段并各自改版本号之后，数学、名字和特效照原样恢复，物理进度与发射参数回到初始，格式 7 的全通存档补发奖励武器。0.7.0 说明里「能读取格式 1–5」仍然对得上当前分支。
 
-0.7.0 发布时共 **354 项逻辑检查**（战斗 33 + 城镇剧情 48 + 体内篇 101 + 隐藏伙伴 39 + 扩展 69 + 0.7 专项 64），覆盖实际移动通关、走弦失败、重复桥失败、接缝镜像与朝向、奖励防重复、中途存档续走、双主题切换、旧格式 1–5 迁移、名字与安全区操作。试玩反馈那次提交把套件改到新的按钮位置，并加上 3 项暂停菜单检查，提交说明记为 357 项游戏检查。格式 6、7、8 的存档往返加在 0.7 专项套件里。物理工坊补齐后有独立的 `tools/tests/PhysicsTests.java`，覆盖操作键接通、默认射程命中、角度/力度调节与边界、HUD 按钮与键盘快捷键、镜面/导线机关、物理札记、第七件武器与共振连锁、格式 8 与格式 7 迁移。`tools/verify-release.py` 仍按 0.7.0、versionCode 7 和 354 项来断言，尚未跟着源码版本更新。
+0.7.0 发布时共 **354 项逻辑检查**（战斗 33 + 城镇剧情 48 + 体内篇 101 + 隐藏伙伴 39 + 扩展 69 + 0.7 专项 64），覆盖实际移动通关、走弦失败、重复桥失败、接缝镜像与朝向、奖励防重复、中途存档续走、双主题切换、旧格式 1–5 迁移、名字与安全区操作。试玩反馈那次提交把套件改到新的按钮位置，并加上 3 项暂停菜单检查，提交说明记为 357 项游戏检查。格式 6、7、8 的存档往返加在 0.7 专项套件里。物理工坊补齐后有独立的 `tools/tests/PhysicsTests.java`，覆盖操作键接通、默认射程命中、角度/力度调节与边界、HUD 按钮与键盘快捷键、镜面/导线机关、物理札记、第七件武器与共振连锁、格式 8 与格式 7 迁移。`tools/verify-release.py` 从 `app/build.gradle` 读取版本，核对当前安装包的校验和、DEX 和资源；它不再把 0.7.0 的 354 项历史日志当成当前套件的通过条件。当前逻辑回归以 `tools/verify-desktop.sh` 和 `tools/verify-studio.sh` 实际跑出来的结果为准。
 
 `artifacts/screenshots-v0.7/` 共 49 张共享 Java2D 渲染预览；39 为扩建东庭，40 为主题选择，41–43 为数学关卡，44 为发现札记，45 为改名，46–49 为挥剑/突刺/挥锤的不同姿态。试玩提交按新按钮重绘过其中若干张。它们是可复现演示状态，不是手机实拍，也没有物理工坊的画面。日志：`artifacts/verification-v0.7.log`、`artifacts/apk-build-v0.7.log`、`artifacts/apk-parallel-build-v0.7.log`。
 

@@ -75,6 +75,12 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.node } },
   },
 
+  /* 手机修图外壳跑在 WebView 里，不是 Node。浏览器全局在这里是对的。 */
+  {
+    files: ['apps/mobile/**/*.js'],
+    languageOptions: { globals: { ...globals.browser } },
+  },
+
   /* ── CommonJS：`require()` 在这里是**正确写法**，不是风格问题 ──
    *
    * Electron 主进程与 preload 必须是 CJS（随附 Node 不支持 `require(esm)`），

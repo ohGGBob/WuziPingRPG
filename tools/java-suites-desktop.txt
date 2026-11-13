@@ -1,0 +1,9 @@
+# Desktop / game regression classes. verify-desktop.sh and verify-desktop.ps1 both read this list.
+GameTests
+StoryTests
+BodyTests
+GuestTests
+ExpansionTests
+MathTests
+PhysicsTests
+HistoryTests

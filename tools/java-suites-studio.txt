@@ -1,0 +1,10 @@
+# Studio host regression classes. verify-studio.sh and verify-studio.ps1 both read this list.
+# StudioFilesTests is invoked separately; it lives in another package.
+GameTests
+StoryTests
+BodyTests
+GuestTests
+ExpansionTests
+MathTests
+PhysicsTests
+HistoryTests

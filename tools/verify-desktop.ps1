@@ -11,20 +11,12 @@ $sources = @((Get-ChildItem -LiteralPath (Join-Path $projectRoot 'core\src\main\
 if ($LASTEXITCODE -ne 0) { throw 'Desktop compilation failed' }
 Push-Location $projectRoot
 try {
-    & (Join-Path $JdkRoot 'bin\java.exe') -cp $classes cn.wuziping.ember.tests.GameTests
-    if ($LASTEXITCODE -ne 0) { throw 'Simulation checks failed' }
-    & (Join-Path $JdkRoot 'bin\java.exe') -cp $classes cn.wuziping.ember.tests.StoryTests
-    if ($LASTEXITCODE -ne 0) { throw 'Story checks failed' }
-    & (Join-Path $JdkRoot 'bin\java.exe') -cp $classes cn.wuziping.ember.tests.BodyTests
-    if ($LASTEXITCODE -ne 0) { throw 'Body campaign checks failed' }
-    & (Join-Path $JdkRoot 'bin\java.exe') -cp $classes cn.wuziping.ember.tests.GuestTests
-    if ($LASTEXITCODE -ne 0) { throw 'Hidden guest checks failed' }
-    & (Join-Path $JdkRoot 'bin\java.exe') -cp $classes cn.wuziping.ember.tests.ExpansionTests
-    if ($LASTEXITCODE -ne 0) { throw 'Expansion checks failed' }
-    & (Join-Path $JdkRoot 'bin\java.exe') -cp $classes cn.wuziping.ember.tests.MathTests
-    if ($LASTEXITCODE -ne 0) { throw 'Mathematics checks failed' }
-    & (Join-Path $JdkRoot 'bin\java.exe') -cp $classes cn.wuziping.ember.tests.PhysicsTests
-    if ($LASTEXITCODE -ne 0) { throw 'Physics workshop checks failed' }
+    Get-Content -LiteralPath (Join-Path $PSScriptRoot 'java-suites-desktop.txt') | ForEach-Object {
+        $name = $_.Trim()
+        if (-not $name -or $name.StartsWith('#')) { return }
+        & (Join-Path $JdkRoot 'bin\java.exe') -cp $classes "cn.wuziping.ember.tests.$name"
+        if ($LASTEXITCODE -ne 0) { throw "Simulation checks failed: $name" }
+    }
     & (Join-Path $JdkRoot 'bin\java.exe') '-Djava.awt.headless=true' -cp $classes cn.wuziping.ember.desktop.Desktop --screenshots $screens
     if ($LASTEXITCODE -ne 0) { throw 'Screenshot rendering failed' }
     & (Join-Path $JdkRoot 'bin\jar.exe') cfe (Join-Path $dist 'WuziPing-desktop-preview.jar') cn.wuziping.ember.desktop.Desktop -C $classes . -C (Join-Path $projectRoot 'app\src\main\assets') .

@@ -1,10 +1,139 @@
-// Executed with the Tabbit browser-owned Playwright runtime.
-const fs=await import('node:fs/promises');
-const url=(await fs.readFile('D:/大学生软件创新大赛/WuziPingRPG-0.2.1/build/studio-preview-url.txt','utf8')).trim();
-const errors=[];page.on('pageerror',e=>errors.push(String(e)));
-await page.addInitScript(()=>{window.nativeCalls=[];window.StudioBridge={postMessage(raw){const m=JSON.parse(raw);window.nativeCalls.push(m);setTimeout(()=>{if(m.type==='ready'){window.StudioNative.receive({type:'capabilities',scan:true,photo:true,game:true,sdk:34});window.StudioNative.receive({type:'restore',data:null});}if(m.type==='snapshot')window.StudioNative.receive({type:'snapshotSaved',id:m.id,ok:true});},0);}};});
-await page.setViewportSize({width:390,height:844});await page.goto(url,{waitUntil:'networkidle'});await page.waitForFunction(()=>document.querySelector('#landing')?.dataset.ready==='1');
-const cards=await page.locator('.home-card').evaluateAll(es=>es.map(e=>e.dataset.mode));assert.equal(JSON.stringify(cards),JSON.stringify(['lecture','tts','scan','python','notepad','photo','ai','game']));
-for(const id of ['python','notepad','lecture','tts','ai','game']){await page.locator('.home-card[data-mode="'+id+'"]').click();await page.waitForFunction(()=>document.querySelector('#landing').hidden,{timeout:8000});if(id==='ai')await page.locator('#aiHome').click();else await page.locator('#homeButton').click();await page.waitForFunction(()=>!document.querySelector('#landing').hidden);}
-for(const id of ['scan','photo']){await page.locator('.home-card[data-mode="'+id+'"]').click();await page.waitForFunction(id=>window.nativeCalls.some(x=>x.type==='openModule'&&x.id===id),id);await page.evaluate(id=>window.StudioNative.receive({type:'moduleReturned',id}),id);assert((await page.locator('#resumeCard').getAttribute('data-mode'))===id);}
-assert.equal(errors.length,0,errors.join('\n'));const result={cards,webModes:6,nativeModules:2,consoleErrors:errors,version:await page.locator('.brandver').innerText(),native_bridge:'simulated',android_device_tested:false};await fs.writeFile('D:/大学生软件创新大赛/WuziPingRPG-0.2.1/artifacts/studio-v0.1/merge-ui-0.2.1.json',JSON.stringify(result,null,2));return result;
+#!/usr/bin/env node
+/* Static home-card check, runnable with `node tools/test-merged-ui.js`.
+ *
+ * The old file was a Playwright snippet: top-level await, a hardcoded D: path,
+ * and an injected `page`/`assert`. Node could not execute it. This file checks
+ * that studio/web/src/index.html and studio/web/src/back.js name the same home
+ * modules. Pass --browser plus STUDIO_PREVIEW_URL to click through with
+ * Playwright when that package is installed. Browser mode is not the default
+ * and is not claimed as an Android or device test.
+ */
+'use strict';
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+function repoRoot() {
+  return path.resolve(__dirname, '..');
+}
+
+function homeCardModes(html) {
+  const modes = [];
+  const tags = html.match(/<button\b[^>]*\bhome-card\b[^>]*>/g) || [];
+  for (const tag of tags) {
+    const mode = /data-mode="([^"]+)"/.exec(tag);
+    if (!mode) throw new Error('home card is missing data-mode: ' + tag);
+    modes.push(mode[1]);
+  }
+  return modes;
+}
+
+function moduleIds(source) {
+  const start = source.indexOf('export const MODULES=[');
+  if (start < 0) throw new Error('MODULES registry was not found in back.js');
+  const end = source.indexOf('];', start);
+  if (end < 0) throw new Error('MODULES registry does not close');
+  const block = source.slice(start, end);
+  const ids = [];
+  const re = /\{id:'([^']+)'/g;
+  let match;
+  while ((match = re.exec(block))) ids.push(match[1]);
+  if (!ids.length) throw new Error('MODULES registry has no ids');
+  return ids;
+}
+
+function staticCheck(root) {
+  const htmlPath = path.join(root, 'studio', 'web', 'src', 'index.html');
+  const backPath = path.join(root, 'studio', 'web', 'src', 'back.js');
+  const cards = homeCardModes(fs.readFileSync(htmlPath, 'utf8'));
+  const modules = moduleIds(fs.readFileSync(backPath, 'utf8'));
+  const cardSet = new Set(cards);
+  const moduleSet = new Set(modules);
+  const missing = modules.filter((id) => !cardSet.has(id));
+  const extra = cards.filter((id) => !moduleSet.has(id));
+  if (missing.length || extra.length || cardSet.size !== cards.length) {
+    const error = new Error(
+      'home cards and MODULES diverged: missing=' + missing.join(',') +
+      ' extra=' + extra.join(',')
+    );
+    error.cards = cards;
+    error.modules = modules;
+    throw error;
+  }
+  return {
+    cards,
+    modules,
+    orderMatches: cards.join(',') === modules.join(','),
+    browser: false,
+    android_device_tested: false
+  };
+}
+
+async function browserCheck(root) {
+  const url = process.env.STUDIO_PREVIEW_URL;
+  if (!url) throw new Error('Set STUDIO_PREVIEW_URL to a page Playwright can open');
+  let playwright;
+  try {
+    playwright = require('playwright');
+  } catch (error) {
+    throw new Error('Playwright is not installed; static check does not need it. ' + error.message);
+  }
+  const browser = await playwright.chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(String(error)));
+  await page.addInitScript(() => {
+    window.nativeCalls = [];
+    window.StudioBridge = {
+      postMessage(raw) {
+        const message = JSON.parse(raw);
+        window.nativeCalls.push(message);
+        setTimeout(() => {
+          if (message.type === 'ready') {
+            window.StudioNative.receive({ type: 'capabilities', scan: true, photo: true, game: true, sdk: 34 });
+            window.StudioNative.receive({ type: 'restore', data: null });
+          }
+          if (message.type === 'snapshot') window.StudioNative.receive({ type: 'snapshotSaved', id: message.id, ok: true });
+        }, 0);
+      }
+    };
+  });
+  try {
+    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.waitForFunction(() => document.querySelector('#landing')?.dataset.ready === '1');
+    const cards = await page.locator('.home-card').evaluateAll((elements) => elements.map((element) => element.dataset.mode));
+    const expected = staticCheck(root).cards;
+    if (JSON.stringify(cards) !== JSON.stringify(expected)) {
+      throw new Error('rendered cards ' + JSON.stringify(cards) + ' != ' + JSON.stringify(expected));
+    }
+    if (errors.length) throw new Error(errors.join('\n'));
+    const outDir = path.join(root, 'artifacts', 'studio-v0.1');
+    fs.mkdirSync(outDir, { recursive: true });
+    const result = { cards, browser: true, consoleErrors: errors, android_device_tested: false };
+    fs.writeFileSync(path.join(outDir, 'merge-ui-static.json'), JSON.stringify(result, null, 2));
+    return result;
+  } finally {
+    await browser.close();
+  }
+}
+
+async function main() {
+  const root = process.env.WUZIPING_ROOT ? path.resolve(process.env.WUZIPING_ROOT) : repoRoot();
+  if (process.argv.includes('--browser')) {
+    const result = await browserCheck(root);
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  const result = staticCheck(root);
+  console.log(JSON.stringify(result, null, 2));
+  console.log('SKIP browser: run with --browser and STUDIO_PREVIEW_URL when Playwright is installed. Not an Android test.');
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error && error.stack ? error.stack : error);
+    process.exit(1);
+  });
+}
+
+module.exports = { homeCardModes, moduleIds, staticCheck, repoRoot };
