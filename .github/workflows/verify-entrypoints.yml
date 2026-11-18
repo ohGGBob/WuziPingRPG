@@ -16,41 +16,47 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: studio/web/package-lock.json
-      - name: Python 校验入口
-        run: python3 tools/test_verify_support.py
-      - name: 开发检查（有缺口时不得写成发行 PASS）
+      - name: 天工开发检查与严格门槛应当通过
         run: |
           set -o pipefail
-          python3 tools/verify-release.py | tee /tmp/game-dev.txt
           python3 tools/verify-studio-release.py | tee /tmp/studio-dev.txt
-          grep -q 'EXIT: INCOMPLETE' /tmp/game-dev.txt
-          grep -q 'EXIT: INCOMPLETE' /tmp/studio-dev.txt
-          if grep -q '^EXIT: PASS$' /tmp/game-dev.txt || grep -q '^EXIT: PASS$' /tmp/studio-dev.txt; then
-            echo '开发检查把未完成的发行写成了 PASS'
+          python3 tools/verify-studio-release.py --strict | tee /tmp/studio-strict.txt
+          grep -q '^EXIT: PASS$' /tmp/studio-dev.txt
+          grep -q '^EXIT: PASS$' /tmp/studio-strict.txt
+          grep -E '^SUMMARY: mode=dev PASS=[0-9]+ FAIL=0 SKIP=0 KNOWN=0 NOTE=[0-9]+$' /tmp/studio-dev.txt
+          grep -E '^SUMMARY: mode=strict PASS=[0-9]+ FAIL=0 SKIP=0 KNOWN=0 NOTE=[0-9]+$' /tmp/studio-strict.txt
+          grep -q 'fallback matches index.html' /tmp/studio-strict.txt
+          if grep -q 'published assets/studio/editor.page is not the current index' /tmp/studio-strict.txt; then
+            echo '天工回退页又和当前首页不一致'
             exit 1
           fi
-      - name: 严格发行门槛目前应当失败
-        run: |
-          set +e
-          python3 tools/verify-release.py --strict > /tmp/game-strict.txt
-          game=$?
-          python3 tools/verify-studio-release.py --strict > /tmp/studio-strict.txt
-          studio=$?
-          set -e
-          test "$game" -ne 0
-          test "$studio" -ne 0
-          grep -q '^EXIT: FAIL$' /tmp/game-strict.txt
-          grep -q '^EXIT: FAIL$' /tmp/studio-strict.txt
-          grep -E '^SUMMARY: mode=strict PASS=[0-9]+ FAIL=0 SKIP=[0-9]+ KNOWN=[1-9][0-9]* NOTE=[0-9]+$' /tmp/game-strict.txt
-          grep -E '^SUMMARY: mode=strict PASS=[0-9]+ FAIL=0 SKIP=[0-9]+ KNOWN=[1-9][0-9]* NOTE=[0-9]+$' /tmp/studio-strict.txt
-          grep -q 'HistoryJourney' /tmp/game-strict.txt
-          grep -q 'history_road.png' /tmp/game-strict.txt
-          grep -q 'editor.page' /tmp/studio-strict.txt
-          if grep -q 'java or apksigner' /tmp/game-strict.txt || grep -q 'java/zipalign/aapt/apksigner not all present' /tmp/studio-strict.txt; then
+          if grep -q 'java/zipalign/aapt/apksigner not all present' /tmp/studio-strict.txt; then
             echo 'Java 缺失和 SDK 工具缺失被写在了同一句里'
             exit 1
           fi
-          echo '严格门槛按预期失败，且没有额外的 FAIL 行。这不代表发行包已经完整'
+      - name: Python 校验入口
+        run: python3 tools/test_verify_support.py
+      - name: 游戏发行检查（缺包或硬失败不得通过）
+        run: |
+          set +e
+          python3 tools/verify-release.py > /tmp/game-dev.txt
+          game=$?
+          python3 tools/verify-release.py --strict > /tmp/game-strict.txt
+          strict=$?
+          set -e
+          cat /tmp/game-dev.txt
+          echo '---'
+          cat /tmp/game-strict.txt
+          test "$game" -eq 0
+          test "$strict" -eq 0
+          grep -q '^EXIT: PASS$' /tmp/game-dev.txt
+          grep -q '^EXIT: PASS$' /tmp/game-strict.txt
+          grep -E '^SUMMARY: mode=dev PASS=[0-9]+ FAIL=0 SKIP=0 KNOWN=0 NOTE=[0-9]+$' /tmp/game-dev.txt
+          grep -E '^SUMMARY: mode=strict PASS=[0-9]+ FAIL=0 SKIP=0 KNOWN=0 NOTE=[0-9]+$' /tmp/game-strict.txt
+          if grep -q 'file is not in dist/' /tmp/game-strict.txt || grep -q 'java or apksigner' /tmp/game-strict.txt; then
+            echo '游戏当前包缺失，或 Java 与 SDK 工具被写在了同一句里'
+            exit 1
+          fi
       - name: 首页卡片静态检查
         run: node tools/test-merged-ui.js
       - name: 安装天工网页依赖

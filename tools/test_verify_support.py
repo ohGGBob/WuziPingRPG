@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -149,7 +150,9 @@ class Entrypoints(unittest.TestCase):
         game_sums = verify_support.checksum_map(ROOT / "dist" / "SHA256SUMS.txt")
         for suffix in ("debug", "parallel-debug"):
             game_name = f"WuziPing-Emberbound-{game.version_name}-{suffix}.apk"
-            self.assertEqual(game_sums.get(game_name), verify_support.sha256_file(ROOT / "dist" / game_name))
+            game_path = ROOT / "dist" / game_name
+            self.assertTrue(game_path.is_file(), f"{game_name} is not in dist/; the checksum file cannot cover the current Gradle package")
+            self.assertEqual(game_sums.get(game_name), verify_support.sha256_file(game_path))
 
 
 class Gate(unittest.TestCase):
@@ -332,46 +335,81 @@ class BuildToolsSelection(unittest.TestCase):
 
 
 class PublishedPackages(unittest.TestCase):
-    def test_dev_check_does_not_claim_a_finished_release(self):
-        for script in ("tools/verify-release.py", "tools/verify-studio-release.py"):
-            completed = subprocess.run(
-                ["python3", script],
-                cwd=ROOT,
-                check=False,
-                capture_output=True,
-                text=True,
-            )
+    def run_check(self, script: str, strict: bool) -> subprocess.CompletedProcess[str]:
+        command = ["python3", script]
+        if strict:
+            command.append("--strict")
+        return subprocess.run(command, cwd=ROOT, check=False, capture_output=True, text=True)
+
+    def summary(self, text: str, mode: str) -> dict[str, int]:
+        matched = re.search(
+            rf"^SUMMARY: mode={mode} PASS=(\d+) FAIL=(\d+) SKIP=(\d+) KNOWN=(\d+) NOTE=(\d+)$",
+            text,
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(matched, text)
+        keys = ("PASS", "FAIL", "SKIP", "KNOWN", "NOTE")
+        return {key: int(value) for key, value in zip(keys, matched.groups())}
+
+    def assert_gate_matches_rows(self, completed: subprocess.CompletedProcess[str], strict: bool) -> dict[str, int]:
+        mode = "strict" if strict else "dev"
+        counts = self.summary(completed.stdout, mode)
+        if counts["FAIL"] or (strict and (counts["SKIP"] or counts["KNOWN"])):
+            self.assertNotEqual(completed.returncode, 0, completed.stdout)
+            self.assertIn("EXIT: FAIL", completed.stdout)
+            self.assertNotIn("EXIT: PASS", completed.stdout)
+            self.assertNotIn("EXIT: INCOMPLETE", completed.stdout)
+        elif counts["SKIP"] or counts["KNOWN"]:
             self.assertEqual(completed.returncode, 0, completed.stderr)
             self.assertIn("EXIT: INCOMPLETE", completed.stdout)
             self.assertNotIn("EXIT: PASS", completed.stdout)
-            self.assertIn("mode=dev", completed.stdout)
+        else:
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertIn("EXIT: PASS", completed.stdout)
+            self.assertNotIn("EXIT: INCOMPLETE", completed.stdout)
+            self.assertNotIn("EXIT: FAIL", completed.stdout)
+        if counts["FAIL"]:
+            self.assertFalse(verify_support.summary_is_known_gap_only(completed.stdout), completed.stdout)
+        return counts
 
-    def test_strict_gate_fails_on_the_published_gaps(self):
-        game = subprocess.run(
-            ["python3", "tools/verify-release.py", "--strict"],
-            cwd=ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        self.assertNotEqual(game.returncode, 0)
-        self.assertIn("EXIT: FAIL", game.stdout)
-        self.assertIn("HistoryJourney", game.stdout)
-        self.assertIn("history_road.png", game.stdout)
-        self.assertTrue(verify_support.summary_is_known_gap_only(game.stdout), game.stdout)
-        self.assertNotIn("java or apksigner", game.stdout)
-        studio = subprocess.run(
-            ["python3", "tools/verify-studio-release.py", "--strict"],
-            cwd=ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        self.assertNotEqual(studio.returncode, 0)
-        self.assertIn("EXIT: FAIL", studio.stdout)
-        self.assertIn("editor.page", studio.stdout)
-        self.assertTrue(verify_support.summary_is_known_gap_only(studio.stdout), studio.stdout)
-        self.assertNotIn("java/zipalign/aapt/apksigner not all present", studio.stdout)
+    def test_studio_release_matches_the_gate_and_current_package(self):
+        studio = verify_support.read_gradle_version(ROOT / "studio" / "build.gradle")
+        apk_name = f"Ember-Studio-{studio.version_name}.apk"
+        for strict in (False, True):
+            completed = self.run_check("tools/verify-studio-release.py", strict)
+            counts = self.assert_gate_matches_rows(completed, strict)
+            self.assertIn(f"{studio.version_name} versionCode {studio.version_code}", completed.stdout)
+            self.assertIn(apk_name, completed.stdout)
+            self.assertIn("fallback matches index.html", completed.stdout)
+            self.assertNotIn("published assets/studio/editor.page is not the current index", completed.stdout)
+            self.assertNotIn("java/zipalign/aapt/apksigner not all present", completed.stdout)
+            if counts["SKIP"] == 0 and counts["FAIL"] == 0:
+                self.assertEqual(counts["KNOWN"], 0)
+                self.assertIn("EXIT: PASS", completed.stdout)
+
+    def test_game_release_does_not_treat_a_missing_apk_as_a_known_gap(self):
+        game = verify_support.read_gradle_version(ROOT / "app" / "build.gradle")
+        names = [
+            f"WuziPing-Emberbound-{game.version_name}-debug.apk",
+            f"WuziPing-Emberbound-{game.version_name}-parallel-debug.apk",
+        ]
+        missing = [name for name in names if not (ROOT / "dist" / name).is_file()]
+        for strict in (False, True):
+            completed = self.run_check("tools/verify-release.py", strict)
+            counts = self.assert_gate_matches_rows(completed, strict)
+            self.assertNotIn("java or apksigner", completed.stdout)
+            if missing:
+                self.assertGreater(counts["FAIL"], 0, completed.stdout)
+                self.assertEqual(counts["KNOWN"], 0, completed.stdout)
+                self.assertFalse(verify_support.summary_is_known_gap_only(completed.stdout), completed.stdout)
+                self.assertNotIn("HistoryJourney", completed.stdout)
+                self.assertNotIn("history_road.png", completed.stdout)
+                for name in missing:
+                    self.assertIn(name, completed.stdout)
+                self.assertIn("file is not in dist/", completed.stdout)
+            elif counts["FAIL"] == 0 and counts["KNOWN"] and strict and counts["SKIP"] == 0:
+                self.assertTrue(verify_support.summary_is_known_gap_only(completed.stdout), completed.stdout)
+                self.assertIn("HistoryJourney", completed.stdout)
 
 
 class ScriptsRun(unittest.TestCase):
