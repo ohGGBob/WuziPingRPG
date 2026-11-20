@@ -21,6 +21,8 @@ export const BACK={
   EDITOR:'editor',
   HOME:'home',
   CATALOG:'catalog',
+  TAB_PAGE:'tabPage',
+  TAB_HOME:'tabHome',
   EXIT:'exit'
 };
 
@@ -84,6 +86,8 @@ function flag(value){return value===true;}
 function normalize(ctx){
   const value=ctx&&typeof ctx==='object'?ctx:{};
   const mode=value.mode==='game'||WEB_IDS.has(value.mode)?value.mode:'';
+  const activeTab=value.activeTab==='recent'||value.activeTab==='profile'?value.activeTab:'home';
+  const tabDepth=Math.max(0,Math.min(12,Math.floor(Number(value.tabDepth)||0)));
   const lectureTab=value.lectureTab==='timeline'||value.lectureTab==='slides'?value.lectureTab:'notes';
   const layers=Array.isArray(value.layers)?value.layers.filter(item=>typeof item==='string'&&item):[];
   return {
@@ -93,6 +97,9 @@ function normalize(ctx){
     searchOpen:flag(value.searchOpen),
     homeOpen:flag(value.homeOpen)||flag(value.landingOpen),
     catalogOpen:flag(value.catalogOpen),
+    activeTab,
+    tabDepth,
+    moduleOpen:flag(value.moduleOpen),
     loungeOpen:flag(value.loungeOpen),
     layers,
     mode,
@@ -111,20 +118,27 @@ function normalize(ctx){
 export function resolveBack(ctx){
   const value=normalize(ctx);
   if(value.dialogOpen)return {action:BACK.DIALOG};
-  if(value.homeOpen)return {action:value.catalogOpen?BACK.CATALOG:BACK.EXIT};
+  if(value.homeOpen){
+    if(value.catalogOpen)return {action:BACK.CATALOG};
+    if(value.tabDepth>0)return {action:BACK.TAB_PAGE};
+    if(value.activeTab!=='home')return {action:BACK.TAB_HOME};
+    return {action:BACK.EXIT};
+  }
   if(value.drawerOpen)return {action:BACK.DRAWER};
   if(value.drawing)return {action:BACK.DRAW};
   if(value.searchOpen)return {action:BACK.SEARCH};
   if(value.layers.length)return {action:BACK.LAYER,layer:value.layers[0]};
   if(value.mode==='lecture'&&value.lectureTab!=='notes')return {action:BACK.LECTURE_TAB};
   if(value.loungeOpen&&value.mode!=='game')return {action:BACK.EDITOR};
+  if(value.moduleOpen&&value.tabDepth>0)return {action:BACK.TAB_PAGE};
   return {action:BACK.HOME};
 }
 
 /** Esc closes overlays only; it never leaves a module or closes the in-editor game lobby. */
 export function resolveEscapeBack(ctx){
   const decision=resolveBack(ctx);
-  return decision.action===BACK.EXIT||decision.action===BACK.HOME||decision.action===BACK.EDITOR?{action:null,decision}:decision;
+  const navigation=new Set([BACK.EXIT,BACK.HOME,BACK.EDITOR,BACK.TAB_PAGE,BACK.TAB_HOME]);
+  return navigation.has(decision.action)?{action:null,decision}:decision;
 }
 
 /** 一步返回。不丢文件内容。 */
@@ -141,6 +155,8 @@ export function stepBack(ctx){
     case BACK.LECTURE_TAB:next.lectureTab='notes';break;
     case BACK.EDITOR:next.loungeOpen=false;break;
     case BACK.CATALOG:next.catalogOpen=false;break;
+    case BACK.TAB_PAGE:next.tabDepth=Math.max(0,next.tabDepth-1);break;
+    case BACK.TAB_HOME:next.activeTab='home';break;
     case BACK.HOME:
       next.homeOpen=true;
       next.resumeMode=current.mode||current.resumeMode;

@@ -118,7 +118,12 @@ class PreviewActivity : AppCompatActivity() {
         }
     }
     private fun result(action: String) {
-        setResult(RESULT_OK, Intent().putExtra(EXTRA_PATH, paths[pager.currentItem])
+        val path = paths[pager.currentItem]
+        setResult(RESULT_OK, Intent().putExtra(EXTRA_PATH, path)
+            .putExtra("modulePath", path)
+            .putExtra("moduleTitle", java.io.File(path).name)
+            .putExtra("moduleSize", java.io.File(path).length())
+            .putExtra("modulePages", paths.size)
             .putExtra(EXTRA_INDEX, pager.currentItem).putExtra(EXTRA_ACTION, action)
             .putExtra(EXTRA_PREVIEW_MODE, modeFor(effect).name))
         finish()

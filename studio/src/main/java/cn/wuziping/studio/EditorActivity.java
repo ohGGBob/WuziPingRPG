@@ -24,7 +24,7 @@ public final class EditorActivity extends Activity {
     private WebView web;private AssetServer assets;private PackedAssets packed;private AtomicFile workspace,gameSave;
     private TextToSpeech tts;private boolean ttsReady=false,ttsInitializing=false,ttsRangeSeen=false;private String ttsError="",ttsCurrentId="";private int ttsCharIndex=0,ttsCurrentLength=0;
     private final ExecutorService io=Executors.newSingleThreadExecutor();private JSONObject pendingExport;private boolean pickerOpen=false,workspaceReadOnly=false,keyboardVisible=false;private AlertDialog exitDialog;
-    private static final int OPEN=30,FOLDER=31,EXPORT=32,GAME_OUT=33,GAME_IN=34,MIC=35,SLIDE=36,SLIDES=37,PPTX=38,TREE=39,MIC_WARM=40;
+    private static final int OPEN=30,FOLDER=31,EXPORT=32,GAME_OUT=33,GAME_IN=34,MIC=35,SLIDE=36,SLIDES=37,PPTX=38,TREE=39,MIC_WARM=40,MODULE=41;
     private static final String SLIDE_PREFIX="slide-cache/";
     /* 课堂模式的录音与 PPT 页面图存在这里，工作区 JSON 只留引用：
        否则 2 小时录音 + 几十页 PPT 会撞上快照上限，整份草稿被丢弃。 */
@@ -47,7 +47,7 @@ public final class EditorActivity extends Activity {
     private static final int SOURCE_ASSETS=0,SOURCE_LOOPBACK=1,SOURCE_PACKAGED=2;
     private final android.os.Handler ui=new android.os.Handler(android.os.Looper.getMainLooper());
     private int source=SOURCE_ASSETS,probeCount=0,restoreResends=0;private boolean bootOk=false,bootFailureShown=false,rendererRecovery=false;
-    private long bootStart=0,lastRestoreAt=0;private String lastPageError="",lastResourceError="",lastJsError="";
+    private long bootStart=0,lastRestoreAt=0;private String lastPageError="",lastResourceError="",lastJsError="";private JSONObject openedModuleMeta;
     private static int rendererRecoveries=0;
     private final Runnable bootWatchdog=new Runnable(){@Override public void run(){if(!bootOk&&web!=null){lastPageError="启动超时（"+sourceName()+"）";escalateTransport();}}};
     private final Set<String> trustedUris=Collections.synchronizedSet(new HashSet<String>());
@@ -477,7 +477,8 @@ public final class EditorActivity extends Activity {
         put(o,"scan",scanAvailable());put(o,"photo",true);put(o,"game",true);put(o,"sdk",android.os.Build.VERSION.SDK_INT);
         event(o);
     }
-    private void openModule(String id){
+    private void openModule(JSONObject message){
+        String id=message.optString("id");
         Intent intent;
         if("photo".equals(id))intent=new Intent(this,PhotoActivity.class);
         else if("scan".equals(id)){
@@ -485,8 +486,10 @@ public final class EditorActivity extends Activity {
             if(!scanAvailable()){notice("这台设备没有可用的相机，或安装包没有包含扫描模块。");return;}
             intent=new Intent().setClassName(this,SCAN_ACTIVITY);
         }else{notice("未知模块："+id);return;}
+        JSONObject payload=message.optJSONObject("payload");
+        if(payload!=null){String recentUri=payload.optString("uri","");if(!recentUri.isEmpty())intent.putExtra("recentUri",recentUri);String recentTitle=payload.optString("title","");if(!recentTitle.isEmpty())intent.putExtra("recentTitle",recentTitle);}
         if(web!=null)web.evaluateJavascript("window.Studio&&window.Studio.flush()",null);
-        try{startActivity(intent);openedModule=id;}catch(Exception e){openedModule=null;notice("模块没能打开："+e.getMessage());}
+        try{openedModuleMeta=null;startActivityForResult(intent,MODULE);openedModule=id;}catch(Exception e){openedModule=null;notice("模块没能打开："+e.getMessage());}
     }
     private void deliverRestore(){
         lastRestoreAt=android.os.SystemClock.uptimeMillis();
@@ -531,7 +534,7 @@ public final class EditorActivity extends Activity {
     private void handle(JSONObject m)throws Exception{
         String type=m.optString("type");
         if(type.equals("ready")){deliverRestore();sendCapabilities();return;}
-        if(type.equals("openModule")){openModule(m.optString("id"));return;}
+        if(type.equals("openModule")){openModule(m);return;}
         if(type.equals("aiRequest")){assistant.aiRequest(m);return;}
         if(type.equals("aiCancel")){assistant.aiCancel(m.optString("id",""));return;}
         if(type.equals("aiTool")){assistant.tool(m);return;}
@@ -776,7 +779,23 @@ public final class EditorActivity extends Activity {
         for(String resource:request.getResources())if(android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource))allow.add(resource);
         request.grant(allow.toArray(new String[0]));
     }
-    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);pickerOpen=false;if(result!=RESULT_OK||data==null){if(request==EXPORT&&pendingExport!=null){JSONObject o=message("saved");put(o,"id",pendingExport.optString("id"));put(o,"ok",false);put(o,"message","已取消导出，草稿仍保留。");event(o);pendingExport=null;}if(request==SLIDE&&pendingSlideChooser!=null){resolveSlideChooser(null);}return;}
+    @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);pickerOpen=false;
+        if(request==MODULE){
+            openedModuleMeta=message("moduleMeta");
+            if(result==RESULT_OK&&data!=null){
+                String modulePath=data.getStringExtra("modulePath");
+                if(modulePath==null||modulePath.isEmpty())modulePath=data.getStringExtra("path");
+                if(modulePath==null||modulePath.isEmpty())modulePath=data.getStringExtra("crop_path");
+                String moduleUri=data.getStringExtra("moduleUri");
+                put(openedModuleMeta,"uri",moduleUri==null||moduleUri.isEmpty()?modulePath:moduleUri);
+                put(openedModuleMeta,"path",modulePath);
+                put(openedModuleMeta,"title",data.getStringExtra("moduleTitle"));
+                put(openedModuleMeta,"size",data.getLongExtra("moduleSize",0));
+                put(openedModuleMeta,"pages",data.getIntExtra("modulePages",0));
+            }
+            return;
+        }
+        if(result!=RESULT_OK||data==null){if(request==EXPORT&&pendingExport!=null){JSONObject o=message("saved");put(o,"id",pendingExport.optString("id"));put(o,"ok",false);put(o,"message","已取消导出，草稿仍保留。");event(o);pendingExport=null;}if(request==SLIDE&&pendingSlideChooser!=null){resolveSlideChooser(null);}return;}
         if(request==OPEN){final ArrayList<Uri> uris=new ArrayList<>();if(data.getClipData()!=null){ClipData clips=data.getClipData();for(int i=0;i<Math.min(160,clips.getItemCount());i++)uris.add(clips.getItemAt(i).getUri());}else if(data.getData()!=null)uris.add(data.getData());for(Uri uri:uris){persistGrant(uri,data.getFlags());trust(uri);}io.execute(()->importUris(uris));}
         else if(request==FOLDER&&data.getData()!=null){Uri uri=data.getData();persistGrant(uri,data.getFlags());io.execute(()->importTree(uri));}
         else if(request==TREE&&data.getData()!=null){assistant.saveTree(data.getData(),data.getFlags());notice("目录已授权。AI 可以先做只读扫描，再由你逐项确认整理或清理。");}
@@ -799,7 +818,7 @@ public final class EditorActivity extends Activity {
     private void backupGame()throws IOException{if(!gameSave.getBaseFile().exists()&&!new File(gameSave.getBaseFile().getPath()+".bak").exists())return;try(InputStream in=gameSave.openRead()){atomic(new AtomicFile(new File(getFilesDir(),"journey-backup-"+System.currentTimeMillis()+".wzpsave")),TextFiles.read(in,8*1024*1024));}}
     private static void atomic(AtomicFile file,byte[] bytes)throws IOException{FileOutputStream out=null;try{out=file.startWrite();out.write(bytes);file.finishWrite(out);}catch(IOException e){if(out!=null)file.failWrite(out);throw e;}}
     private void backup(File source,String prefix,String suffix)throws IOException{if(!source.exists())return;try(InputStream in=new FileInputStream(source)){atomic(new AtomicFile(new File(getFilesDir(),prefix+System.currentTimeMillis()+suffix)),TextFiles.read(in,32*1024*1024));}}
-    @Override protected void onResume(){super.onResume();exitRequested=false;ui.removeCallbacks(exitWatchdog);if(web!=null){JSONObject o=message("gameState");put(o,"exists",gameSave.getBaseFile().exists()||new File(gameSave.getBaseFile().getPath()+".bak").exists());event(o);if(openedModule!=null){JSONObject back=message("moduleReturned");put(back,"id",openedModule);openedModule=null;event(back);}}}
+    @Override protected void onResume(){super.onResume();exitRequested=false;ui.removeCallbacks(exitWatchdog);if(web!=null){JSONObject o=message("gameState");put(o,"exists",gameSave.getBaseFile().exists()||new File(gameSave.getBaseFile().getPath()+".bak").exists());event(o);if(openedModule!=null){JSONObject back=message("moduleReturned");put(back,"id",openedModule);if(openedModuleMeta!=null){put(back,"uri",openedModuleMeta.optString("uri",""));put(back,"path",openedModuleMeta.optString("path",""));put(back,"title",openedModuleMeta.optString("title",""));put(back,"size",openedModuleMeta.optLong("size",0));put(back,"pages",openedModuleMeta.optInt("pages",0));}openedModule=null;openedModuleMeta=null;event(back);}}}
     @Override protected void onPause(){
         if(tts!=null&&ttsCurrentId.length()>0)pauseTts(ttsCurrentId);
         if(web!=null){

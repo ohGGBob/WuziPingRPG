@@ -805,6 +805,7 @@ async function stopRecording(options){
     setBar('stopped');
     if(interrupted)hint('录音被中断（'+interrupted+'），已保存录到的 '+fmt(persist.audio.duration)+'。');
     renderAnchors();renderTimeline();updateTimer();
+    if(env&&typeof env.onLectureCapture==='function')env.onLectureCapture({duration:persist.audio&&persist.audio.duration||0,anchors:persist.anchors.length,ref:audioRef()});
     if(env&&env.flush)env.flush();
     if(!background)notify('录音完成：'+fmt(persist.audio.duration)+' · '+persist.anchors.length+' 个锚点。');
     else notify('录音已在后台结束并保存：'+fmt(persist.audio.duration)+'。');
@@ -1196,6 +1197,7 @@ function finishImport(added,firstError,skippedPages){
     hint(message);notify(message);reportError(message);
     return;
   }
+  if(env&&typeof env.onLectureMaterial==='function')env.onLectureMaterial({count:added,skippedPages});
   notify('已导入 '+added+' 张 PPT 页面'+(skippedPages?'（有 '+skippedPages+' 页无法渲染）':'')+'。录音中点「📌 标记锚点」即可关联当前页。');
 }
 function refreshSlideDialog(slide){
@@ -1330,6 +1332,21 @@ export function lectureSuspend(info){
 }
 export function lectureStatusText(){
   return persist.anchors.length+' 锚点 · '+persist.slides.length+' 张照片';
+}
+export function lectureSeekRecent(anchor){
+  if(!anchor||typeof anchor!=='object')return false;
+  ensureUI();
+  const value=Number(anchor.value);
+  if(anchor.kind==='page'&&Number.isFinite(value)){
+    curSlide=clampSlide(Math.max(0,Math.round(value)-1));
+    renderSlideStage(false);
+    return true;
+  }
+  if(anchor.kind==='time'&&Number.isFinite(value)&&hasAudio()){
+    void seekTo(Math.max(0,value),false);
+    return true;
+  }
+  return false;
 }
 /* 原生 mediaPut/mediaGc 的异步回执：app.js 收到未知类型时转进来。 */
 export function lectureMediaMessage(m){return mediaMessage(m);}

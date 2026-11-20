@@ -6,7 +6,7 @@ await mkdir(out,{recursive:true});
 /* 单文件 IIFE 打包：原生壳把 app.js 内联成普通 <script>，不能用 ESM/动态 import。
    three 静态包含；初始化不依赖 WebGL，仅 enter() 建渲染器，WebGL 不可用降级。 */
 await build({entryPoints:['src/app.js'],bundle:true,outfile:out+'/app.js',format:'iife',target:['chrome64'],minify:true,legalComments:'eof'});
-for(const file of ['index.html','meteor-sky.webp','boot.js','theme-boot.js','style.css','lecture.css','tts.css','ai.css','model.css','shell.css','theme.css','fx.css','cockpit.css','workspace.css','workspace-wheel.css','python-lab-panel.css','python-worker.js','cpp-worker.js','javascript-worker.js','worker-output.js'])await copyFile('src/'+file,out+'/'+file);
+for(const file of ['index.html','meteor-sky.webp','boot.js','theme-boot.js','style.css','lecture.css','tts.css','ai.css','model.css','shell.css','theme.css','fx.css','cockpit.css','workspace.css','workspace-wheel.css','python-lab-panel.css','tabs.css','python-worker.js','cpp-worker.js','javascript-worker.js','worker-output.js'])await copyFile('src/'+file,out+'/'+file);
 /* editor.page 是 index.html 的壳降级副本（PackedAssets 回退用），必须随构建同步，
    否则壳副本会停在旧版本，缺新增的面板元素。两处副本保持一致。 */
 await copyFile(out+'/index.html',out+'/editor.page');
@@ -33,7 +33,7 @@ for(const file of ['app.js','boot.js','theme-boot.js']){
   if(safe!==raw)await writeFile(out+'/'+file,safe);
 }
 /* 内联进 <style> 的表同样不能出现 "</style"。 */
-for(const file of ['style.css','lecture.css','tts.css','ai.css','model.css','shell.css','theme.css','fx.css','python-lab-panel.css']){
+for(const file of ['style.css','lecture.css','tts.css','ai.css','model.css','shell.css','theme.css','fx.css','python-lab-panel.css','tabs.css']){
   const raw=await readFile(out+'/'+file,'utf8');
   const safe=raw.replace(/<\/style/gi,m=>'<\\/'+m.slice(2));
   if(safe!==raw)await writeFile(out+'/'+file,safe);

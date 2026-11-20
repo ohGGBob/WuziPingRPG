@@ -115,6 +115,10 @@ class MainActivity : AppCompatActivity() {
     private var shutterSound: MediaActionSound? = null
     @Volatile private var pendingCaptureFile: File? = null
     private var lastOcrText: String? = null
+    private var lastOutputPath = ""
+    private var lastOutputTitle = ""
+    private var lastOutputSize = 0L
+    private var lastOutputPages = 0
 
     @Volatile private var analysisEnabled = true
     @Volatile private var windowFocused = false
@@ -187,6 +191,13 @@ class MainActivity : AppCompatActivity() {
         val index = pages.indexOfFirst { it.file.absolutePath == path }
         if (index < 0) { updateUi(); return }
         val action = result.data?.getStringExtra(PreviewActivity.EXTRA_ACTION)
+        if (action != "delete" && path != null) {
+            val file = File(path)
+            lastOutputPath = path
+            lastOutputTitle = file.name
+            lastOutputSize = file.length()
+            lastOutputPages = pages.size
+        }
         val previewMode = result.data?.getStringExtra(PreviewActivity.EXTRA_PREVIEW_MODE)
             ?.let { runCatching { EnhanceMode.valueOf(it) }.getOrNull() }
         // 预览只是比较效果；若用原色预览后直接返回，提示导出仍按主界面模式，并指向彩色版入口。
@@ -268,6 +279,8 @@ class MainActivity : AppCompatActivity() {
         pendingCaptureFile = savedInstanceState?.getString("pendingCapture")?.let(::File)
         pendingEditFile = savedInstanceState?.getString("pendingEdit")?.let(::File)
         previewOpen = savedInstanceState?.getBoolean("previewOpen") ?: false
+        val recentUri = intent.getStringExtra("recentUri").orEmpty()
+        if (recentUri.isNotEmpty()) toast("打开最近材料：${intent.getStringExtra("recentTitle").orEmpty().ifBlank { recentUri }}")
 
         val saved = SettingsStore.load(this)
         frameEnabled = saved.frame
@@ -372,7 +385,7 @@ class MainActivity : AppCompatActivity() {
         }
         binding.torchBtn.setOnClickListener { camera?.cameraControl?.enableTorch(!torchOn) }
         binding.postBtn.setOnClickListener { showPostPanel() }
-        binding.homeBtn.setOnClickListener { finish() }
+        binding.homeBtn.setOnClickListener { returnToStudio() }
         binding.zoomDial.onZoomChange = { ratio ->
             camera?.cameraInfo?.zoomState?.value?.let { state ->
                 camera?.cameraControl?.setZoomRatio(ratio.coerceIn(state.minZoomRatio, state.maxZoomRatio))
@@ -707,6 +720,10 @@ class MainActivity : AppCompatActivity() {
                                 put(MediaStore.MediaColumns.IS_PENDING, 0)
                             }, null, null) > 0)
                             committed = true; exported++
+                            lastOutputPath = uri.toString()
+                            lastOutputTitle = "page_${(index+1).toString().padStart(4,'0')}.jpg"
+                            lastOutputSize = runCatching { contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: 0L }.getOrDefault(0L)
+                            lastOutputPages = files.size
                         } finally {
                             image.recycle()
                             if (!committed) uri?.let { runCatching { contentResolver.delete(it, null, null) } }
@@ -1116,6 +1133,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showPdfResult(result: PdfCreator.Result, colorCopy: Boolean = false) {
+        lastOutputPath = result.uri.toString()
+        lastOutputTitle = result.displayName
+        lastOutputSize = result.size
+        lastOutputPages = pages.size
         lastOcrText = result.text.ifBlank { null }
         val details = buildString {
             if (colorCopy) appendLine(getString(R.string.pdf_color_note))
@@ -1164,6 +1185,18 @@ class MainActivity : AppCompatActivity() {
             if (clearAfterPdf && !keepPages && (!result.ocrRequested || result.missedPages.isEmpty())) clearPages()
         }
         dialog.show()
+    }
+
+    private fun returnToStudio() {
+        if (lastOutputPath.isNotEmpty()) {
+            setResult(RESULT_OK, Intent()
+                .putExtra("modulePath", lastOutputPath)
+                .putExtra("moduleUri", lastOutputPath)
+                .putExtra("moduleTitle", lastOutputTitle)
+                .putExtra("moduleSize", lastOutputSize)
+                .putExtra("modulePages", lastOutputPages))
+        }
+        finish()
     }
 
     private fun copyText(text: String) {
