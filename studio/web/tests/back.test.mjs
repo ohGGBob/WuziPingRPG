@@ -195,6 +195,20 @@ test('Escape closes overlays but never navigates or exits',()=>{
   assert.deepEqual(resolveEscapeBack({homeOpen:true}),{action:null,decision:{action:BACK.EXIT}});
   assert.deepEqual(resolveEscapeBack({homeOpen:false,mode:'python'}),{action:null,decision:{action:BACK.HOME}});
   assert.deepEqual(resolveEscapeBack({homeOpen:false,mode:'python',loungeOpen:true}),{action:null,decision:{action:BACK.EDITOR}});
+  assert.deepEqual(resolveEscapeBack({homeOpen:true,activeTab:'recent',tabDepth:1}),{action:null,decision:{action:BACK.TAB_PAGE}});
+  assert.deepEqual(resolveEscapeBack({homeOpen:true,catalogOpen:true}),{action:BACK.CATALOG});
+});
+
+test('tab pages close before switching home and asking to exit',()=>{
+  const run=repeatBack({homeOpen:true,activeTab:'recent',tabDepth:1},4);
+  assert.deepEqual(run.trace.slice(0,3),[BACK.TAB_PAGE,BACK.TAB_HOME,BACK.EXIT]);
+  assert.equal(run.state.activeTab,'home');
+  assert.equal(run.state.tabDepth,0);
+});
+
+test('an open module uses the real tab stack before falling back home',()=>{
+  assert.equal(resolveBack({moduleOpen:true,tabDepth:1,mode:'python'}).action,BACK.TAB_PAGE);
+  assert.equal(resolveBack({moduleOpen:true,tabDepth:0,mode:'python'}).action,BACK.HOME);
 });
 
 test('mode changes protect a recording and a running program',()=>{

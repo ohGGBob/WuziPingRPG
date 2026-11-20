@@ -33,11 +33,18 @@ public final class PhotoActivity extends Activity {
     private WebView web;private AssetServer assets;private PackedAssets packed;
     private ValueCallback<Uri[]> pendingChooser;
     private final Map<String,Pending> exports=Collections.synchronizedMap(new HashMap<String,Pending>());
+    private String lastExportPath="",lastExportName="",lastExportMime="";
+    private long lastExportSize=0;
 
     private static final class Pending {final File file;final String name,mime;final OutputStream out;long size;
         Pending(File file,String name,String mime)throws IOException{this.file=file;this.name=name;this.mime=mime;this.out=new BufferedOutputStream(new FileOutputStream(file));}}
 
     @Override public void onCreate(Bundle state){super.onCreate(state);
+        String recentUri=getIntent().getStringExtra("recentUri");
+        if(recentUri!=null&&!recentUri.isEmpty()){
+            String recentTitle=getIntent().getStringExtra("recentTitle");
+            toast("打开最近材料："+(recentTitle==null||recentTitle.isEmpty()?recentUri:recentTitle));
+        }
         try{
             getWindow().setStatusBarColor(0xff14141a);getWindow().setNavigationBarColor(0xff14141a);
             getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -104,7 +111,7 @@ public final class PhotoActivity extends Activity {
         @JavascriptInterface public void abort(String token){Pending p=exports.remove(token);if(p==null)return;try{p.out.close();}catch(IOException ignored){}if(!p.file.delete())p.file.deleteOnExit();}
         @JavascriptInterface public String finish(String token){
             Pending p=exports.remove(token);if(p==null)return "";
-            try{p.out.close();return publish(p);}
+            try{p.out.close();String result=publish(p);lastExportPath=result;lastExportName=p.name;lastExportMime=p.mime;lastExportSize=p.size;return result;}
             catch(Exception e){toast("导出失败："+e.getMessage());return "";}
             finally{if(!p.file.delete())p.file.deleteOnExit();}
         }
@@ -154,6 +161,17 @@ public final class PhotoActivity extends Activity {
     @Override public void onBackPressed(){
         if(web==null){finish();return;}
         web.evaluateJavascript("window.PhotoMobile&&window.PhotoMobile.back?window.PhotoMobile.back():false",r->{if(!"true".equals(r))finish();});
+    }
+    @Override public void finish(){
+        if(!lastExportPath.isEmpty()){
+            Intent data=new Intent();
+            data.putExtra("modulePath",lastExportPath);
+            data.putExtra("moduleTitle",lastExportName);
+            data.putExtra("moduleSize",lastExportSize);
+            data.putExtra("moduleMime",lastExportMime);
+            setResult(RESULT_OK,data);
+        }
+        super.finish();
     }
     @Override protected void onDestroy(){
         deliverChoice(null);

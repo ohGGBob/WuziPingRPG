@@ -119,6 +119,18 @@ async function checkWorkspaces(page) {
   assert.equal(await page.evaluate(() => window.Studio.back()), true);
   await desk.waitFor({state: 'visible'});
   assert.equal(await study.getAttribute('aria-selected'), 'true');
+
+  // The host can save while a tool is open, but reloading renders the tab root.
+  await body.getByRole('button', {name: /记忆卡片/}).click();
+  await page.locator('#landing').waitFor({state: 'hidden'});
+  await page.evaluate(() => window.Studio.flush());
+  await page.waitForFunction(() => JSON.parse(sessionStorage.getItem('test-workspace') || 'null')
+    ?.ui?.tabs?.stacks?.home?.includes('cards'));
+  await reloadSavedWorkspace(page);
+  assert.equal(await study.getAttribute('aria-selected'), 'true');
+  assert.equal(await page.evaluate(() => window.Studio.getState().tabDepth), 0,
+    'reloading to a tab root must not retain an invisible module route');
+  assert.equal(await page.evaluate(() => window.Studio.back()), false);
   return {draft, pythonOutput};
 }
 
@@ -128,7 +140,9 @@ async function checkHomeNavigation(page) {
   const home = page.locator('#landing');
   const catalog = page.locator('#toolCatalog');
   const opener = page.locator('#deskCatalog');
-  const returnButton = page.getByRole('button', {name: '返回工作区'});
+  // The catalog toolbar and the module toolbar have their own back buttons.
+  const returnButton = page.locator('#workspaceDesk .workspace-bar')
+    .getByRole('button', {name: '返回工作区', exact: true});
   const scroll = catalog;
 
   await opener.click();
@@ -152,7 +166,18 @@ async function checkHomeNavigation(page) {
     await returnButton.click({trial: true, timeout: 5000});
     assert(await scroll.evaluate(el => el.scrollWidth <= el.clientWidth), 'the tools list must fit horizontally');
     const tabBox = await opener.boundingBox();
-    assert(tabBox.y > size.height - 90 && tabBox.height >= 48, 'the tools tab must be reachable at the bottom');
+    // The tabbed workspace places these controls above the page content. Keep
+    // testing reachability, not the old bottom position.
+    const pagesBox = await page.locator('#workspacePages').boundingBox();
+    const mainNavBox = await page.locator('#studioTabbar').boundingBox();
+    assert(tabBox && pagesBox && tabBox.x >= 0 && tabBox.y >= titleBox.y + titleBox.height &&
+      tabBox.height >= 48 && tabBox.x + tabBox.width <= size.width &&
+      tabBox.y + tabBox.height <= pagesBox.y + 1,
+      'the tools tab must have a usable touch target between the title and the page');
+    assert(mainNavBox && mainNavBox.y >= pagesBox.y + pagesBox.height - 1 &&
+      Math.abs(mainNavBox.y + mainNavBox.height - size.height) <= 1,
+      'main navigation must stay at the bottom without covering the page');
+    await opener.click({trial: true, timeout: 5000});
   }
   await returnButton.click();
   await returnButton.waitFor({state: 'hidden'});
@@ -184,7 +209,17 @@ async function checkHomeNavigation(page) {
   await opener.waitFor({state: 'visible'});
   assert.equal(await focusedId(), 'deskStudy');
   assert.equal(await back(), false, 'the workspace returns control to Android');
-  return {scrollBefore: before, scrollAfter: after, screenSizes: 4};
+
+  // Switching primary tabs is different from returning from a module.
+  const studioTabs = page.locator('#studioTabbar');
+  await opener.click();
+  await returnButton.waitFor({state: 'visible'});
+  await studioTabs.getByRole('tab', {name: '最近', exact: true}).click();
+  await page.locator('#recentRoot').waitFor({state: 'visible'});
+  await studioTabs.getByRole('tab', {name: '首页', exact: true}).click();
+  await returnButton.waitFor({state: 'hidden'});
+  assert.equal(await opener.getAttribute('aria-selected'), 'false', 'switching tabs resets the tools directory');
+  return {scrollBefore: before, scrollAfter: after, screenSizes: 4, tabSwitchResetsCatalog: true};
 }
 
 async function checkFallbackCatalog(browser, url) {
